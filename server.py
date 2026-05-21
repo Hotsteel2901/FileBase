@@ -15,6 +15,8 @@ import html as html_mod
 HOST = os.environ.get("BIND_IP", "0.0.0.0")
 PORT = 6532
 ROOT = "/sdcard"
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "info")  # off / error / info / debug
+# Log levels: off=nothing, error=4xx/5xx only, info=requests+status, debug=all+timing
 
 # ── HTML frontend (embedded so no extra files needed) ────────────────────
 
@@ -137,8 +139,6 @@ input,button,textarea{font-family:inherit;font-size:inherit}
 .tool-btn.primary{background:var(--accent-dim);color:var(--accent);border-color:var(--accent)}
 .tool-btn.primary:hover{background:var(--accent);color:#0c0c0c}
 .tool-btn.danger:hover{color:var(--danger);border-color:var(--danger);background:var(--danger-dim)}
-.file-upload-label{cursor:pointer}
-.file-upload-label input{display:none}
 .search-box{
   margin-left:auto;background:var(--surface-2);border:1px solid var(--border);
   color:var(--text);padding:6px 12px;border-radius:2px;font-size:12px;width:180px;
@@ -366,7 +366,9 @@ input,button,textarea{font-family:inherit;font-size:inherit}
   <div class="breadcrumb" id="breadcrumb"></div>
   <div class="controls">
     <button class="ctrl-btn" id="themeToggle" title="Toggle theme">
-      <svg viewBox="0 0 24 24" id="themeIcon"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      <span id="themeIcon" class="theme-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </span>
     </button>
     <button class="ctrl-btn" id="langToggle">EN</button>
   </div>
@@ -376,7 +378,8 @@ input,button,textarea{font-family:inherit;font-size:inherit}
 <div class="toolbar">
   <button class="tool-btn" onclick="App.goUp()" data-i18n="up">&#8593; Up</button>
   <button class="tool-btn" onclick="App.refresh()" data-i18n="refresh">&#8635; Refresh</button>
-  <label class="tool-btn primary file-upload-label" data-i18n="upload">&#11014; Upload<input type="file" id="fileInput" multiple></label>
+  <button class="tool-btn primary" onclick="document.getElementById('fileInput').click()" data-i18n="upload">&#11014; Upload</button>
+  <input type="file" id="fileInput" multiple style="position:fixed;top:-9999px;left:-9999px;width:1px;height:1px">
   <button class="tool-btn" onclick="App.newFolderModal()" data-i18n="newFolder">&#9654; Folder</button>
   <button class="tool-btn" onclick="App.newFileModal()" data-i18n="newFile">&#9654; File</button>
   <input type="text" class="search-box" id="searchBox" data-i18n-placeholder="search" placeholder="Filter...">
@@ -588,13 +591,11 @@ function applyTheme() {
   updateThemeIcon();
 }
 function updateThemeIcon() {
-  const icon = document.getElementById('themeIcon');
+  const wrap = document.getElementById('themeIcon');
   const isDark = getTheme() === 'dark';
-  if (isDark) {
-    icon.innerHTML = '<circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>';
-  } else {
-    icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
-  }
+  wrap.innerHTML = isDark
+    ? '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>'
+    : '<svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
   if (!localStorage.getItem('fb_theme')) applyTheme();
@@ -971,10 +972,24 @@ App.init();
 class Handler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
-        sys.stderr.write("[server] %s - - [%s] %s\n" %
-                         (self.client_address[0],
-                          self.log_date_time_string(),
-                          format % args))
+        if LOG_LEVEL == "off":
+            return
+        msg = format % args
+        stripped = msg.strip()
+        if LOG_LEVEL == "error":
+            # Only log status-code messages that are 4xx/5xx; skip request lines
+            if not (stripped.isdigit() and stripped.startswith(("4", "5"))):
+                return
+        if LOG_LEVEL == "debug":
+            import time
+            ts = time.strftime("%H:%M:%S")
+            sys.stderr.write("[%s] %s:%d %s| %s\n" %
+                             (ts, self.client_address[0],
+                              self.client_address[1], self.command, msg))
+        else:
+            sys.stderr.write("[server] %s - [%s] %s\n" %
+                             (self.client_address[0],
+                              self.log_date_time_string(), msg))
 
     # ── GET ──────────────────────────────────────────────────────────────
     def do_GET(self):
