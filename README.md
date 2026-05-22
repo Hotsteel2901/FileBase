@@ -13,12 +13,12 @@ A Wi-Fi hotspot file server that turns an Android phone into a full-featured web
 | **Browse** | Directory listing with sortable columns (name, size, date), breadcrumb navigation, live search filter |
 | **Upload** | Button upload (multiple files), drag-and-drop with progress bar, binary-safe multipart parser |
 | **Download** | Single-click download with correct MIME type, RFC 5987 UTF-8 filename encoding, header escaping |
-| **Edit** | Full-screen monospace code editor for text files, auto-save back to server |
+| **Edit** | Full-screen monospace code editor for text files, auto-save back to server (binary files are protected from accidental edit) |
 | **Manage** | Create files/folders, rename, delete (with styled confirmation dialog) |
 | **i18n** | English / 中文 switch with localStorage persistence; unique user ID; new users default English |
 | **Theme** | Dark / Light mode, auto-follows system `prefers-color-scheme`, manual toggle with localStorage memory |
 | **Responsive** | Desktop table layout → mobile card layout at 700px breakpoint |
-| **Security** | Path traversal protection, POST size limits (100 MB upload/write, 64 KB metadata), data-attribute event delegation (no inline onclick for file actions) |
+| **Security** | Path traversal protection, POST size limits (100 MB upload/write, 64 KB metadata), data-attribute event delegation (no inline onclick for file actions), CSRF origin check on POSTs |
 
 ## Distribution
 
@@ -151,12 +151,15 @@ All endpoints prefixed with `/api`.
 | `POST` | `/api/delete` | Delete a file or directory — JSON `{path}` |
 | `POST` | `/api/mkdir` | Create a directory — JSON `{path}` |
 | `POST` | `/api/rename` | Rename / move — JSON `{oldPath, newPath}` |
+| `POST` | `/api/login` | Admin login — JSON `{user, pass}` → `{ok, token}` |
+| `POST` | `/api/logout` | Admin logout — invalidates token |
+| `GET` | `/api/auth` | Check admin auth status → `{admin: bool}` |
 
 ### Response format
 
 **Success** (`/api/list`):
 ```json
-{ "entries": [{ "name": "foo.txt", "isdir": false, "size": 1234, "mtime": 1700000000 }] }
+{ "entries": [{ "name": "foo.txt", "isdir": false, "size": 1234, "mtime": 1700000000, "editable": true }] }
 ```
 
 **Success** (other POST):
@@ -208,6 +211,40 @@ dist/                         Distribution archives
 - **i18n**: Template-driven via `data-i18n` attributes, `localStorage` persistence
 - **Security**: File actions use `data-*` attributes + event delegation; no inline `onclick`
 - **Upload**: Visually‑hidden native file input (opacity:0) for cross‑browser compatibility
+
+---
+
+## Super Admin
+
+FileBase includes a hidden super admin mode for full root-level file management.
+
+### How to activate
+
+1. In the web UI, **click the "FILEBASE" brand logo 10 times rapidly** (each click within 0.5s counts; the system tracks consecutive fast clicks)
+2. After 10 rapid clicks, a **Login** button appears in the top-right control bar
+3. Closing the login dialog does **not** hide the button — it stays visible until the page is refreshed
+4. On full page refresh, the admin login button hides again (the 10-click ritual must be repeated)
+
+### Credentials
+
+| Field | Value |
+|-------|-------|
+| Username | `admin` |
+| Password | `hotsteel` |
+
+### What admin mode changes
+
+- **File system root** shifts from `/sdcard` to `/` — the entire Android filesystem is accessible
+- Navigate **up from `/sdcard`** to the root directory and browse `/data`, `/system`, `/proc`, etc.
+- All operations (upload, delete, rename, edit) work on any path the server process can access
+- The footer shows `Serving: /` instead of `Serving: /sdcard`
+- A red **ADMIN** badge appears in the UI
+
+### Security notes
+
+- Admin tokens are stored in browser `localStorage` and validated server-side per request
+- The login endpoint uses a fixed username/password — change `ADMIN_USER` and `ADMIN_PASS` in `server.py` for production use
+- The 10-click activation is a UI convenience, not a security boundary — the admin API endpoints are always available, just hidden from casual discovery
 
 ---
 

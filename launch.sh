@@ -115,11 +115,11 @@ BIND_IP=""
 ALIAS_LABEL="webserver"
 
 if [ -n "$SUBNET_PREFIX" ]; then
-    # Pick a random host number: avoid 1 (gateway), 2-49 (DHCP pool),
-    # and the device's own last octet
+    # Pick a random host number in the upper range (200-250) to avoid
+    # collision with DHCP pool (typically 2-199) and gateway (1)
     my_last=$(echo "$HOTSPOT_IP" | sed 's/.*\.//')
     while true; do
-        rand=$(( (RANDOM % 200) + 50 ))   # 50–249
+        rand=$(( (RANDOM % 51) + 200 ))   # 200–250
         if [ "$rand" -ne "$my_last" ]; then
             break
         fi

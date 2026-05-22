@@ -18,6 +18,10 @@ ROOT = "/sdcard"
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "info")  # off / error / info / debug
 # Log levels: off=nothing, error=4xx/5xx only, info=requests+status, debug=all+timing
 
+ADMIN_USER = "admin"
+ADMIN_PASS = "hotsteel"
+ADMIN_TOKENS = {}  # token -> True (in-memory session store)
+
 # ── HTML frontend (embedded so no extra files needed) ────────────────────
 
 INDEX_HTML = r"""<!DOCTYPE html>
@@ -341,6 +345,28 @@ input,button,textarea{font-family:inherit;font-size:inherit}
   animation:shimmer 1.5s infinite;
   height:40px;
 }
+
+/* ═══ ADMIN ═══ */
+.admin-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  background:var(--danger-dim);color:var(--danger);
+  padding:2px 8px;border-radius:2px;font-size:10px;font-weight:700;
+  letter-spacing:.5px;text-transform:uppercase;
+  font-family:'JetBrains Mono','Courier New',monospace;
+}
+.ctrl-btn.admin-btn{color:var(--danger);border-color:var(--danger)}
+.ctrl-btn.admin-btn:hover{background:var(--danger);color:#fff}
+
+/* ═══ LOGIN MODAL ═══ */
+.login-input{
+  width:100%;background:var(--bg);color:var(--text);
+  border:1px solid var(--border);border-radius:2px;padding:10px 14px;
+  font-size:14px;font-family:'JetBrains Mono','Courier New',monospace;
+  transition:border-color .15s;
+}
+.login-input:focus{outline:none;border-color:var(--accent)}
+.login-input::placeholder{color:var(--text-muted)}
+.login-error{color:var(--danger);font-size:12px;min-height:16px;margin-top:6px}
 </style>
 </head>
 <body>
@@ -365,6 +391,7 @@ input,button,textarea{font-family:inherit;font-size:inherit}
   </div>
   <div class="breadcrumb" id="breadcrumb"></div>
   <div class="controls">
+    <button class="ctrl-btn admin-btn" id="adminBtn" style="display:none" onclick="App.showLogin()" data-i18n="adminLogin">Admin</button>
     <button class="ctrl-btn" id="themeToggle" title="Toggle theme">
       <span id="themeIcon" class="theme-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
@@ -462,10 +489,29 @@ input,button,textarea{font-family:inherit;font-size:inherit}
   </div>
 </div>
 
+<!-- ═══ LOGIN MODAL ═══ -->
+<div class="modal-backdrop" id="loginBackdrop" onclick="if(event.target===this)App.closeLogin()">
+  <div class="modal sm">
+    <div class="modal-header">
+      <div class="modal-title" style="color:var(--danger)"><span>&#128274;</span> <span data-i18n="adminLogin">Admin Login</span></div>
+      <button class="modal-close" onclick="App.closeLogin()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="text" id="loginUser" class="login-input" placeholder="Username" data-i18n-placeholder="username" style="margin-bottom:10px"><br>
+      <input type="password" id="loginPass" class="login-input" placeholder="Password" data-i18n-placeholder="password">
+      <div class="login-error" id="loginError"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="App.closeLogin()" data-i18n="cancel">Cancel</button>
+      <button class="btn btn-primary" onclick="App.doLogin()" data-i18n="login">Login</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ FOOTER ═══ -->
 <div class="footer">
   <div class="footer-id"><span>ID:</span><span id="footerUid">—</span></div>
-  <div><span data-i18n="serving">Serving</span>: /sdcard &middot; <span id="footerPort">:6532</span></div>
+  <div><span data-i18n="serving">Serving</span>: <span id="footerRoot">/sdcard</span> &middot; <span id="footerPort">:6532</span></div>
 </div>
 
 <script>
@@ -496,6 +542,10 @@ const L = {
     emptyDir:"Empty directory",
     editLabel:"Edit", deleteLabel:"Delete", renameLabel:"Rename",
     langBtn:"EN", langAlt:"中文",
+    adminLogin:"Admin Login", adminBtn:"Admin", logout:"Logout",
+    username:"Username", password:"Password", login:"Login",
+    loginFailed:"Invalid credentials", rootDir:"Root",
+    adminBadges:"ADMIN", filterNoMatch:"No matching files",
   },
   zh: {
     title:"文件管理器", up:"↑ 返回", refresh:"↻ 刷新", upload:"↑ 上传",
@@ -517,6 +567,10 @@ const L = {
     emptyDir:"空目录",
     editLabel:"编辑", deleteLabel:"删除", renameLabel:"重命名",
     langBtn:"中文", langAlt:"EN",
+    adminLogin:"管理员登录", adminBtn:"管理", logout:"退出",
+    username:"用户名", password:"密码", login:"登录",
+    loginFailed:"用户名或密码错误", rootDir:"根目录",
+    adminBadges:"管理员", filterNoMatch:"无匹配文件",
   }
 };
 
@@ -529,6 +583,10 @@ let editingPath = "";
 let delTarget = null;
 let delIsDir = false;
 let dragCounter = 0;
+let isAdmin = false;
+let adminToken = localStorage.getItem('fb_admin_token') || '';
+let adminRevealed = localStorage.getItem('fb_admin_revealed') === '1';
+let clickTimes = [];
 
 // ─── User Identity ────────────────────────────────
 function generateId() {
@@ -602,12 +660,19 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
 });
 
 // ─── API ──────────────────────────────────────────
-async function api(endpoint, opts) {
-  const res = await fetch('/api' + endpoint, opts || {});
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Server error');
-  return data;
-}
+  function authHeaders(extra) {
+    const h = Object.assign({}, extra || {});
+    if (isAdmin && adminToken) h['Authorization'] = 'Bearer ' + adminToken;
+    return h;
+  }
+  async function api(endpoint, opts) {
+    const merged = Object.assign({}, opts || {});
+    merged.headers = authHeaders(merged.headers);
+    const res = await fetch('/api' + endpoint, merged);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Server error');
+    return data;
+  }
 async function loadDir(path) {
   showProgress(30);
   try {
@@ -627,32 +692,40 @@ async function loadDir(path) {
 }
 
 // ─── Navigation ───────────────────────────────────
-function go(path) { if (!path) path = '/'; currentPath = path; loadDir(path); }
-function goUp() {
-  if (currentPath === '/') return;
-  const parts = currentPath.split('/').filter(Boolean);
-  parts.pop();
-  go('/' + parts.join('/') + (parts.length ? '/' : ''));
-}
+  function go(path) { if (!path) path = '/'; currentPath = path; loadDir(path); }
+  function goUp() {
+    // Non-admin users are sandboxed to /sdcard
+    const rootPath = isAdmin ? '/' : '/';
+    if (currentPath === rootPath) return;
+    const parts = currentPath.split('/').filter(Boolean);
+    parts.pop();
+    const newPath = '/' + parts.join('/') + (parts.length ? '/' : '/');
+    // Non-admin cannot go above /sdcard
+    if (!isAdmin && newPath !== '/' && !newPath.startsWith('/sdcard')) return;
+    go(newPath || '/');
+  }
 function refresh() { loadDir(currentPath); }
 
 // ─── Breadcrumb ───────────────────────────────────
-function renderBreadcrumb() {
-  const bc = document.getElementById('breadcrumb');
-  const parts = currentPath.split('/').filter(Boolean);
-  let html = '<span class="bc-root" data-nav="/">&#8962;</span>';
-  let accum = '';
-  parts.forEach((p, i) => {
-    accum += '/' + p;
-    html += '<span class="bc-sep">›</span>';
-    if (i === parts.length - 1) {
-      html += '<span class="bc-link current">' + esc(p) + '</span>';
-    } else {
-      html += '<span class="bc-link" data-nav="' + esc(accum) + '/">' + esc(p) + '</span>';
+  function renderBreadcrumb() {
+    const bc = document.getElementById('breadcrumb');
+    const parts = currentPath.split('/').filter(Boolean);
+    let html = '<span class="bc-root" data-nav="/">' + (isAdmin ? '/' : '&#8962;') + '</span>';
+    if (isAdmin) {
+      // Show additional root indicator for admin
     }
-  });
-  bc.innerHTML = html;
-}
+    let accum = '';
+    parts.forEach((p, i) => {
+      accum += '/' + p;
+      html += '<span class="bc-sep">›</span>';
+      if (i === parts.length - 1) {
+        html += '<span class="bc-link current">' + esc(p) + '</span>';
+      } else {
+        html += '<span class="bc-link" data-nav="' + esc(accum) + '/">' + esc(p) + '</span>';
+      }
+    });
+    bc.innerHTML = html;
+  }
 
 // ─── Status Bar ───────────────────────────────────
 function updateStatus() {
@@ -682,13 +755,16 @@ function renderTable() {
 
   updateSortHeaders();
 
+  if (items.length === 0 && currentData.length === 0) {
+    // Directory is truly empty (no filter active)
+    empty.style.display = 'block';
+    empty.querySelector('.empty-state-text').textContent = t('emptyDir');
+    return;
+  }
   if (items.length === 0) {
-    tbody.innerHTML = '';
-    const isTrulyEmpty = currentData.length === 0 && !filter;
-    empty.style.display = isTrulyEmpty ? 'none' : 'block';
-    if (isTrulyEmpty) {
-      empty.querySelector('.empty-state-text').textContent = t('emptyDir');
-    }
+    // Filter yielded no results
+    empty.style.display = 'block';
+    empty.querySelector('.empty-state-text').textContent = t('filterNoMatch');
     return;
   }
   empty.style.display = 'none';
@@ -710,7 +786,10 @@ function renderTable() {
     }
 
     const isdir = e.isdir ? '1' : '0';
-    let acts = '<button class="file-act-btn" data-action="edit" data-path="' + esc(rawPath) + '">' + t('editLabel') + '</button>';
+    let acts = '';
+    if (e.editable) {
+      acts += '<button class="file-act-btn" data-action="edit" data-path="' + esc(rawPath) + '">' + t('editLabel') + '</button>';
+    }
     acts += '<button class="file-act-btn" data-action="rename" data-path="' + esc(rawPath) + '">' + t('renameLabel') + '</button>';
     acts += '<button class="file-act-btn del" data-action="delete" data-path="' + esc(rawPath) + '" data-isdir="' + isdir + '">' + t('deleteLabel') + '</button>';
 
@@ -744,24 +823,53 @@ function updateSortHeaders() {
 }
 
 // ─── Upload ───────────────────────────────────────
-function uploadFiles(files) {
+async function uploadFiles(files) {
   if (!files.length) return;
-  Array.from(files).forEach(file => {
-    showProgress(10);
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('path', currentPath);
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/upload');
-    xhr.onload = () => {
-      if (xhr.status === 200) { toast(t('uploaded') + ': ' + file.name, 'success'); refresh(); }
-      else { toast(t('failed') + ': ' + file.name, 'error'); }
-      showProgress(0);
-    };
-    xhr.onerror = () => { toast(t('failed') + ': ' + file.name, 'error'); showProgress(0); };
-    xhr.upload.onprogress = e => { if (e.lengthComputable) showProgress(10 + (e.loaded / e.total) * 80); };
-    xhr.send(fd);
-  });
+  const arr = Array.from(files);
+  for (let i = 0; i < arr.length; i++) {
+    const file = arr[i];
+    const pctBase = (i / arr.length) * 100;
+    const pctRange = 100 / arr.length;
+    await new Promise(resolve => {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('path', currentPath);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/upload');
+	      if (isAdmin && adminToken) xhr.setRequestHeader('Authorization', 'Bearer ' + adminToken);
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          try {
+            const res = JSON.parse(xhr.responseText);
+            if (res.files && res.files.length) {
+              res.files.forEach(f => {
+                toast(f.ok ? (t('uploaded') + ': ' + f.name) : (t('failed') + ': ' + f.name), f.ok ? 'success' : 'error');
+              });
+            } else {
+              toast(t('uploaded') + ': ' + file.name, 'success');
+            }
+          } catch(e) {
+            toast(t('uploaded') + ': ' + file.name, 'success');
+          }
+        } else {
+          toast(t('failed') + ': ' + file.name, 'error');
+        }
+        showProgress(i === arr.length - 1 ? 100 : 0);
+        resolve();
+      };
+      xhr.onerror = () => { toast(t('failed') + ': ' + file.name, 'error'); showProgress(0); resolve(); };
+      xhr.upload.onprogress = e => {
+        if (e.lengthComputable) {
+          const filePct = e.loaded / e.total;
+          showProgress(pctBase + filePct * pctRange);
+        }
+      };
+      xhr.send(fd);
+    });
+  }
+  showProgress(100);
+  setTimeout(() => showProgress(0), 300);
+  refresh();
   document.getElementById('fileInput').value = '';
 }
 document.getElementById('fileInput').addEventListener('change', function() {
@@ -809,7 +917,8 @@ async function editFile(path) {
   const name = path.split('/').filter(Boolean).pop();
   document.getElementById('editTitle').textContent = name;
   try {
-    const res = await fetch('/api/download?path=' + encodeURIComponent(path));
+    const res = await fetch('/api/download?path=' + encodeURIComponent(path),
+        {headers: authHeaders()});
     const text = await res.text();
     document.getElementById('editContent').value = text;
     document.getElementById('editBackdrop').classList.add('active');
@@ -819,7 +928,7 @@ async function saveEdit() {
   const content = document.getElementById('editContent').value;
   try {
     const res = await fetch('/api/write', { method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers: authHeaders({'Content-Type':'application/json'}),
       body: JSON.stringify({path: editingPath, content}) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
@@ -907,55 +1016,163 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-// ─── Init ─────────────────────────────────────────
-function init() {
-  const uid = getUserId();
-  document.getElementById('footerUid').textContent = uid;
-
-  applyTheme();
-  applyLang();
-
-  document.getElementById('themeToggle').addEventListener('click', toggleTheme);
-  document.getElementById('langToggle').addEventListener('click', () => {
-    setLang(getLang() === 'en' ? 'zh' : 'en');
-  });
-
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      closeEdit(); closeNameModal(); closeDelModal();
+// ─── Admin ────────────────────────────────────────
+  function showLogin() {
+    document.getElementById('loginUser').value = '';
+    document.getElementById('loginPass').value = '';
+    document.getElementById('loginError').textContent = '';
+    document.getElementById('loginBackdrop').classList.add('active');
+    setTimeout(() => document.getElementById('loginUser').focus(), 100);
+  }
+  function closeLogin() { document.getElementById('loginBackdrop').classList.remove('active'); }
+  async function doLogin() {
+    const user = document.getElementById('loginUser').value.trim();
+    const pwd = document.getElementById('loginPass').value;
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({user: user, pass: pwd})
+      });
+      const data = await res.json();
+      if (data.ok && data.token) {
+        isAdmin = true;
+        adminToken = data.token;
+        localStorage.setItem('fb_admin_token', adminToken);
+        closeLogin();
+        applyAdminState();
+        currentPath = '/';
+        go('/');
+        toast(t('adminBadges'), 'success');
+      } else {
+        document.getElementById('loginError').textContent = t('loginFailed');
+      }
+    } catch(e) {
+      document.getElementById('loginError').textContent = t('loginFailed');
     }
-  });
+  }
+  async function doLogout() {
+    try {
+      await fetch('/api/logout', {method: 'POST', headers: authHeaders()});
+    } catch(e) {}
+    isAdmin = false;
+    adminToken = '';
+    localStorage.removeItem('fb_admin_token');
+    applyAdminState();
+    currentPath = '/';
+    go('/');
+  }
+  function applyAdminState() {
+    const btn = document.getElementById('adminBtn');
+    if (isAdmin) {
+      btn.style.display = '';
+      btn.textContent = t('logout');
+      btn.classList.add('admin-btn');
+      btn.onclick = doLogout;
+    } else if (adminRevealed) {
+      btn.style.display = '';
+      btn.textContent = t('adminBtn');
+      btn.classList.remove('admin-btn');
+      btn.onclick = showLogin;
+    } else {
+      btn.style.display = 'none';
+    }
+    document.getElementById('footerRoot').textContent = isAdmin ? '/' : '/sdcard';
+  }
+  async function checkAuth() {
+    if (!adminToken) { isAdmin = false; applyAdminState(); return; }
+    try {
+      const res = await fetch('/api/auth', {headers: authHeaders()});
+      const data = await res.json();
+      isAdmin = !!data.admin;
+    } catch(e) {
+      isAdmin = false;
+    }
+    if (!isAdmin) {
+      adminToken = '';
+      localStorage.removeItem('fb_admin_token');
+    }
+    applyAdminState();
+  }
+  function handleBrandClick() {
+    const now = Date.now();
+    clickTimes = clickTimes.filter(t => now - t < 500);
+    clickTimes.push(now);
+    if (clickTimes.length >= 10) {
+      clickTimes = [];
+      if (!adminRevealed && !isAdmin) {
+        adminRevealed = true;
+        localStorage.setItem('fb_admin_revealed', '1');
+        applyAdminState();
+        toast(t('adminBadges') + ' &#128274;', 'info');
+      }
+    }
+  }
 
-  // Event delegation: breadcrumb navigation
-  document.getElementById('breadcrumb').addEventListener('click', function(e) {
-    const navEl = e.target.closest('[data-nav]');
-    if (navEl) go(navEl.dataset.nav);
-  });
+  // ─── Init ─────────────────────────────────────────
+  function init() {
+    const uid = getUserId();
+    document.getElementById('footerUid').textContent = uid;
 
-  // Event delegation: file actions
-  document.getElementById('tbody').addEventListener('click', function(e) {
-    const btn = e.target.closest('[data-action]');
-    if (!btn) return;
-    const action = btn.dataset.action;
-    const path = btn.dataset.path;
-    if (action === 'edit') editFile(path);
-    else if (action === 'rename') renameItem(path);
-    else if (action === 'delete') deleteItem(path, btn.dataset.isdir === '1');
-    else if (action === 'navigate') go(path);
-  });
+    applyTheme();
+    applyLang();
 
-  // Search input
-  document.getElementById('searchBox').addEventListener('input', renderTable);
+    // Admin: check stored token viability
+    checkAuth().then(() => {
+      go(isAdmin ? '/' : '/');
+    });
 
-  go('/');
-}
+    // Brand click: 10 quick clicks reveals admin login
+    document.querySelector('.brand').addEventListener('click', handleBrandClick);
+
+    // Login modal: Enter key submits
+    document.getElementById('loginPass').addEventListener('keydown', e => {
+      if (e.key === 'Enter') doLogin();
+    });
+    document.getElementById('loginUser').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('loginPass').focus();
+    });
+
+    document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+    document.getElementById('langToggle').addEventListener('click', () => {
+      setLang(getLang() === 'en' ? 'zh' : 'en');
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        closeEdit(); closeNameModal(); closeDelModal(); closeLogin();
+      }
+    });
+
+    // Event delegation: breadcrumb navigation
+    document.getElementById('breadcrumb').addEventListener('click', function(e) {
+      const navEl = e.target.closest('[data-nav]');
+      if (navEl) go(navEl.dataset.nav);
+    });
+
+    // Event delegation: file actions
+    document.getElementById('tbody').addEventListener('click', function(e) {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const path = btn.dataset.path;
+      if (action === 'edit') editFile(path);
+      else if (action === 'rename') renameItem(path);
+      else if (action === 'delete') deleteItem(path, btn.dataset.isdir === '1');
+      else if (action === 'navigate') go(path);
+    });
+
+    // Search input
+    document.getElementById('searchBox').addEventListener('input', renderTable);
+  }
 
 // Public API
 return {
   go, goUp, refresh, sort, editFile, saveEdit, closeEdit,
   deleteItem, closeDelModal, confirmDel,
   renameItem, newFolderModal, newFileModal,
-  closeNameModal, confirmName, uploadFiles, init
+  closeNameModal, confirmName, uploadFiles, init,
+    showLogin, closeLogin, doLogin, doLogout, handleBrandClick
 };
 
 })();
@@ -969,7 +1186,42 @@ App.init();
 
 # ── Server handler ───────────────────────────────────────────────────────
 
+# Binary extensions that should never be opened in the text editor
+_BINARY_EXTS = {
+    '.apk','.aab','.zip','.gz','.tar','.rar','.7z','.bz2','.xz','.zst',
+    '.jpg','.jpeg','.png','.gif','.webp','.bmp','.ico','.svg',
+    '.mp3','.mp4','.ogg','.wav','.flac','.aac','.m4a','.mkv','.avi','.mov',
+    '.pdf','.doc','.docx','.xls','.xlsx','.ppt','.pptx','.odt','.ods',
+    '.exe','.dll','.so','.o','.pyc','.class','.dex','.jar','.war',
+    '.db','.sqlite','.iso','.img','.bin','.dat',
+}
+
+def _is_binary(filepath):
+    """Check if a file appears to be binary by extension or content heuristics."""
+    import os.path
+    _, ext = os.path.splitext(filepath)
+    if ext.lower() in _BINARY_EXTS:
+        return True
+    try:
+        with open(filepath, 'rb') as f:
+            chunk = f.read(8192)
+        return b'\x00' in chunk
+    except Exception:
+        return True
+
 class Handler(http.server.BaseHTTPRequestHandler):
+
+    def _is_admin(self):
+        """Check if the request carries a valid admin token."""
+        auth = self.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+            return token in ADMIN_TOKENS
+        return False
+
+    def _get_root(self):
+        """Return filesystem root based on admin status."""
+        return "/" if self._is_admin() else ROOT
 
     def log_message(self, format, *args):
         if LOG_LEVEL == "off":
@@ -1004,10 +1256,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(INDEX_HTML.encode())
             return
 
+        # API: check admin auth status
+        if parsed.path == "/api/auth":
+            self._json_response(200, {"admin": self._is_admin()})
+            return
+
         # API: list directory
         if parsed.path == "/api/list":
             path = qs.get("path", ["/"])[0]
             full = self._resolve(path)
+            if not full:
+                return self._json_error(403, "Path not allowed")
             if not os.path.isdir(full):
                 return self._json_error(404, "Directory not found")
             entries = []
@@ -1015,11 +1274,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 for name in os.listdir(full):
                     fp = os.path.join(full, name)
                     st = os.stat(fp)
+                    isdir = stat.S_ISDIR(st.st_mode)
+                    editable = not isdir and st.st_size <= 5 * 1024 * 1024 and not _is_binary(fp)
                     entries.append({
                         "name": name,
-                        "isdir": stat.S_ISDIR(st.st_mode),
+                        "isdir": isdir,
                         "size": st.st_size,
                         "mtime": int(st.st_mtime),
+                        "editable": editable,
                     })
             except PermissionError:
                 return self._json_error(403, "Permission denied")
@@ -1030,6 +1292,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if parsed.path == "/api/download":
             path = qs.get("path", [""])[0]
             full = self._resolve(path)
+            if not full:
+                return self._json_error(403, "Path not allowed")
             if not os.path.isfile(full):
                 return self._json_error(404, "File not found")
             ctype, _ = mimetypes.guess_type(full)
@@ -1065,7 +1329,51 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     # ── POST ─────────────────────────────────────────────────────────────
     def do_POST(self):
+        # CSRF protection: reject cross-origin POSTs
+        origin = self.headers.get("Origin", "")
+        if origin:
+            host = self.headers.get("Host", "")
+            from urllib.parse import urlparse as _urlparse
+            try:
+                o = _urlparse(origin)
+                origin_host = o.hostname
+                if o.port and o.port not in (80, 443):
+                    origin_host += ":" + str(o.port)
+                # Allow same-origin (Host header or localhost)
+                if host and origin_host != host and origin_host != "localhost" and origin_host != "localhost:" + str(PORT):
+                    return self._json_error(403, "Cross-origin request denied")
+            except Exception:
+                return self._json_error(403, "Invalid origin")
         parsed = urllib.parse.urlparse(self.path)
+
+        # API: admin login
+        if parsed.path == "/api/login":
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 4096:
+                return self._json_error(413, "Request too large")
+            body = self.rfile.read(length)
+            try:
+                data = json.loads(body)
+            except Exception:
+                return self._json_error(400, "Invalid JSON")
+            user = data.get("user", "")
+            pwd = data.get("pass", "")
+            if user == ADMIN_USER and pwd == ADMIN_PASS:
+                import secrets
+                token = secrets.token_hex(32)
+                ADMIN_TOKENS[token] = True
+                self._json_response(200, {"ok": True, "token": token})
+            else:
+                self._json_error(403, "Invalid credentials")
+            return
+
+        # API: admin logout
+        if parsed.path == "/api/logout":
+            auth = self.headers.get("Authorization", "")
+            if auth.startswith("Bearer "):
+                ADMIN_TOKENS.pop(auth[7:], None)
+            self._json_response(200, {"ok": True})
+            return
 
         # API: upload file
         if parsed.path == "/api/upload":
@@ -1084,13 +1392,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             path = data.get("path", "")
             content = data.get("content", "")
             full = self._resolve(path)
+            if not full:
+                return self._json_error(403, "Path not allowed")
             try:
                 os.makedirs(os.path.dirname(full), exist_ok=True)
                 with open(full, "w", encoding="utf-8") as f:
                     f.write(content)
                 self._json_response(200, {"ok": True})
             except Exception as e:
-                self._json_error(500, str(e))
+                self.log_message("ERROR: %s", e)
+                self._json_error(500, "Internal error")
             return
 
         # API: delete
@@ -1104,6 +1415,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except Exception:
                 return self._json_error(400, "Invalid JSON")
             full = self._resolve(data.get("path", ""))
+            if not full:
+                return self._json_error(403, "Path not allowed")
             try:
                 if os.path.isdir(full):
                     shutil.rmtree(full)
@@ -1111,7 +1424,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     os.remove(full)
                 self._json_response(200, {"ok": True})
             except Exception as e:
-                self._json_error(500, str(e))
+                self.log_message("ERROR: %s", e)
+                self._json_error(500, "Internal error")
             return
 
         # API: mkdir
@@ -1125,11 +1439,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except Exception:
                 return self._json_error(400, "Invalid JSON")
             full = self._resolve(data.get("path", ""))
+            if not full:
+                return self._json_error(403, "Path not allowed")
             try:
                 os.makedirs(full, exist_ok=True)
                 self._json_response(200, {"ok": True})
             except Exception as e:
-                self._json_error(500, str(e))
+                self.log_message("ERROR: %s", e)
+                self._json_error(500, "Internal error")
             return
 
         # API: rename
@@ -1144,24 +1461,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._json_error(400, "Invalid JSON")
             old = self._resolve(data.get("oldPath", ""))
             new = self._resolve(data.get("newPath", ""))
+            if not old or not new:
+                return self._json_error(403, "Path not allowed")
             try:
                 os.makedirs(os.path.dirname(new), exist_ok=True)
                 os.rename(old, new)
                 self._json_response(200, {"ok": True})
             except Exception as e:
-                self._json_error(500, str(e))
+                self.log_message("ERROR: %s", e)
+                self._json_error(500, "Internal error")
             return
 
         self._json_error(404, "Unknown endpoint")
 
     # ── Helpers ──────────────────────────────────────────────────────────
     def _resolve(self, path):
-        """Resolve a virtual path under ROOT, preventing traversal."""
+        """Resolve a virtual path under the appropriate root, preventing traversal.
+        Returns the real path, or None if path escapes root."""
+        root = self._get_root()
         clean = os.path.normpath("/" + path.lstrip("/"))
-        full = os.path.join(ROOT, clean.lstrip("/"))
+        full = os.path.join(root, clean.lstrip("/"))
         real = os.path.realpath(full)
-        if not real.startswith(os.path.realpath(ROOT)):
-            return os.path.realpath(ROOT)  # clamp to root
+        root_real = os.path.realpath(root)
+        if not (real == root_real or real.startswith(root_real + os.sep)):
+            return None
         return real
 
     def _handle_upload(self):
@@ -1172,31 +1495,38 @@ class Handler(http.server.BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         if length > 104857600:  # 100 MB limit
             return self._json_error(413, "File too large (max 100 MB)")
-        boundary = ctype.split("boundary=")[-1].strip().encode()
+        boundary = ctype.split("boundary=")[-1].strip().strip('"').encode()
         data = self.rfile.read(length)
 
+        # RFC 2046: boundaries are preceded by \r\n (or start of data)
+        # and followed by \r\n or --\r\n
+        end_marker = b"--" + boundary + b"--"
         delimiter = b"\r\n--" + boundary
-        start_marker = b"--" + boundary
-        pos = data.find(start_marker)
-        if pos == -1:
+
+        target_path = "/"
+        files_uploaded = []
+
+        # Find first boundary (may be at start without leading \r\n)
+        start = data.find(b"--" + boundary)
+        if start == -1:
             return self._json_error(400, "Invalid multipart data")
-        pos += len(start_marker)
+        pos = start + len(b"--" + boundary)
         if data[pos:pos+2] == b"\r\n":
             pos += 2
 
-        target_path = "/"
         while pos < len(data):
             header_end = data.find(b"\r\n\r\n", pos)
             if header_end == -1:
                 break
             headers_block = data[pos:header_end]
             body_start = header_end + 4
-            next_delim = data.find(delimiter, body_start)
-            if next_delim == -1:
-                next_delim = data.find(b"--" + boundary + b"--", body_start)
-                if next_delim == -1:
-                    break
-            body = data[body_start:next_delim]
+
+            # Find the next boundary — only \r\n--boundary (RFC-correct)
+            next_pos = data.find(delimiter, body_start)
+            if next_pos == -1:
+                # No more parts
+                break
+            body = data[body_start:next_pos]
 
             is_file = False
             is_path = False
@@ -1217,20 +1547,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
             elif is_file and filename:
                 fn = os.path.basename(filename)
                 dest_dir = self._resolve(target_path or "/")
+                if not dest_dir:
+                    return self._json_error(403, "Path not allowed")
                 dest = os.path.join(dest_dir, fn)
-                if not os.path.realpath(dest).startswith(os.path.realpath(ROOT)):
+                if not os.path.realpath(dest).startswith(os.path.realpath(self._get_root())):
                     return self._json_error(403, "Path not allowed")
                 os.makedirs(dest_dir, exist_ok=True)
                 with open(dest, "wb") as f:
                     f.write(body)
+                files_uploaded.append({"name": fn, "ok": True})
 
-            pos = next_delim + len(delimiter)
+            # Move past the delimiter and its trailing \r\n
+            pos = next_pos + len(delimiter)
             if data[pos:pos+2] == b"\r\n":
                 pos += 2
-            elif data[pos:pos+2] == b"--":
+            elif data[pos:pos+4] == b"--\r\n" or data[pos:pos+3] == b"--":
                 break
 
-        self._json_response(200, {"ok": True})
+        self._json_response(200, {"ok": True, "files": files_uploaded})
 
     def _json_response(self, code, data):
         body = json.dumps(data).encode()
