@@ -9,6 +9,9 @@ import stat
 import sys
 import urllib.parse
 import mimetypes
+import subprocess
+import shlex
+import base64
 
 HOST = os.environ.get("BIND_IP", "0.0.0.0")
 PORT = 6532
@@ -1196,6 +1199,75 @@ class Handler(http.server.BaseHTTPRequestHandler):
         """Return filesystem root based on admin status."""
         return "/" if self._is_admin() else ROOT
 
+    def _su_exec(self, cmd, input_data=None, timeout=30):
+        """Run a shell command via su -c. Returns (returncode, stdout, stderr)."""
+        try:
+            p = subprocess.run(
+                ['su', '-c', cmd],
+                input=input_data,
+                capture_output=True,
+                timeout=timeout
+            )
+            return p.returncode, p.stdout, p.stderr
+        except subprocess.TimeoutExpired:
+            return 124, b'', b'timeout'
+        except Exception as e:
+            return 1, b'', str(e).encode()
+
+    def _admin_listdir(self, path):
+        """List a directory using su, returning list of entry dicts."""
+        qpath = shlex.quote(path)
+        script = (
+            'cd ' + qpath + ' 2>/dev/null || { printf "\\n"; exit 0; }; '
+            'for f in .* *; do '
+            '  [ "$f" = "." ] && continue; '
+            '  [ "$f" = ".." ] && continue; '
+            '  [ ! -e "$f" ] 2>/dev/null && continue; '
+            '  n=$(printf "%s" "$f" | base64 -w0 2>/dev/null || printf "%s" "$f" | tr -d "\\n" | base64 2>/dev/null); '
+            '  [ -z "$n" ] && continue; '
+            '  if [ -d "$f" ] 2>/dev/null; then t=d; else t=f; fi; '
+            '  s=$(stat -c %s "$f" 2>/dev/null || wc -c < "$f" 2>/dev/null); s=${s:-0}; '
+            '  m=$(stat -c %Y "$f" 2>/dev/null || echo 0); m=${m:-0}; '
+            '  printf "%s|%s|%s|%s\\n" "$n" "$t" "${s//[^0-9]/}" "$m"; '
+            'done'
+        )
+        code, stdout, stderr = self._su_exec(script)
+        if code != 0 and code != 124:
+            err = stderr.decode(errors='replace').strip()
+            if err:
+                raise PermissionError(err)
+            raise PermissionError("Cannot access directory")
+        entries = []
+        for line in stdout.decode(errors='replace').strip().split('\n'):
+            line = line.strip('\r')
+            if not line:
+                continue
+            parts = line.split('|', 3)
+            if len(parts) != 4:
+                continue
+            name_b64, ftype, size_str, mtime_str = parts
+            try:
+                name = base64.b64decode(name_b64).decode('utf-8', errors='replace')
+            except Exception:
+                continue
+            try:
+                size = int(size_str.strip())
+            except ValueError:
+                size = 0
+            try:
+                mtime = int(float(mtime_str.strip()))
+            except ValueError:
+                mtime = 0
+            is_dir = (ftype == 'd')
+            entries.append({
+                "name": name,
+                "isdir": is_dir,
+                "size": size,
+                "mtime": mtime,
+                "editable": not is_dir and size <= 5 * 1024 * 1024,
+            })
+        return entries
+
     def log_message(self, format, *args):
         if LOG_LEVEL == "off":
             return
@@ -1240,22 +1312,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
             full = self._resolve(path)
             if not full:
                 return self._json_error(403, "Path not allowed")
-            if not os.path.isdir(full):
-                return self._json_error(404, "Directory not found")
             entries = []
             try:
-                for name in os.listdir(full):
-                    fp = os.path.join(full, name)
-                    st = os.stat(fp)
-                    isdir = stat.S_ISDIR(st.st_mode)
-                    editable = not isdir and st.st_size <= 5 * 1024 * 1024 and not _is_binary(fp)
-                    entries.append({
-                        "name": name,
-                        "isdir": isdir,
-                        "size": st.st_size,
-                        "mtime": int(st.st_mtime),
-                        "editable": editable,
-                    })
+                if self._is_admin():
+                    entries = self._admin_listdir(full)
+                else:
+                    if not os.path.isdir(full):
+                        return self._json_error(404, "Directory not found")
+                    for name in os.listdir(full):
+                        fp = os.path.join(full, name)
+                        st = os.stat(fp)
+                        isdir = stat.S_ISDIR(st.st_mode)
+                        editable = not isdir and st.st_size <= 5 * 1024 * 1024 and not _is_binary(fp)
+                        entries.append({
+                            "name": name,
+                            "isdir": isdir,
+                            "size": st.st_size,
+                            "mtime": int(st.st_mtime),
+                            "editable": editable,
+                        })
             except PermissionError:
                 return self._json_error(403, "Permission denied")
             self._json_response(200, {"entries": entries})
@@ -1267,18 +1342,35 @@ class Handler(http.server.BaseHTTPRequestHandler):
             full = self._resolve(path)
             if not full:
                 return self._json_error(403, "Path not allowed")
-            if not os.path.isfile(full):
-                return self._json_error(404, "File not found")
+            fname = os.path.basename(full)
             ctype, _ = mimetypes.guess_type(full)
             if not ctype:
                 ctype = "application/octet-stream"
+            if self._is_admin():
+                # Use su to read file, then fall back if it fails
+                code, stdout, stderr = self._su_exec('cat ' + shlex.quote(full), timeout=60)
+                if code != 0:
+                    return self._json_error(404, "File not found or permission denied")
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                try:
+                    safe_fname = fname.encode('ascii', 'replace').decode('ascii')
+                    self.send_header("Content-Disposition",
+                        "attachment; filename=\"%s\"; filename*=UTF-8''%s" %
+                        (safe_fname, urllib.parse.quote(fname, safe='')))
+                except UnicodeEncodeError:
+                    self.send_header("Content-Disposition",
+                        "attachment; filename=\"download\"")
+                self.send_header("Content-Length", str(len(stdout)))
+                self.end_headers()
+                self.wfile.write(stdout)
+                return
+            if not os.path.isfile(full):
+                return self._json_error(404, "File not found")
             size = os.path.getsize(full)
             self.send_response(200)
             self.send_header("Content-Type", ctype)
-            fname = os.path.basename(full)
             try:
-                # RFC 5987: filename*=UTF-8''percent-encoded-name
-                # Use ASCII-safe fallback filename for non-RFC-5987 clients
                 safe_fname = fname.encode('ascii', 'replace').decode('ascii')
                 self.send_header("Content-Disposition",
                     "attachment; filename=\"%s\"; filename*=UTF-8''%s" %
@@ -1370,9 +1462,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not full:
                 return self._json_error(403, "Path not allowed")
             try:
-                os.makedirs(os.path.dirname(full), exist_ok=True)
-                with open(full, "w", encoding="utf-8") as f:
-                    f.write(content)
+                if self._is_admin():
+                    qfull = shlex.quote(full)
+                    qdir = shlex.quote(os.path.dirname(full))
+                    code, _, stderr = self._su_exec(
+                        'mkdir -p ' + qdir + ' && cat > ' + qfull,
+                        input_data=content.encode('utf-8'),
+                        timeout=60)
+                    if code != 0:
+                        raise OSError(stderr.decode(errors='replace'))
+                else:
+                    os.makedirs(os.path.dirname(full), exist_ok=True)
+                    with open(full, "w", encoding="utf-8") as f:
+                        f.write(content)
                 self._json_response(200, {"ok": True})
             except Exception as e:
                 self.log_message("ERROR: %s", e)
@@ -1393,10 +1495,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not full:
                 return self._json_error(403, "Path not allowed")
             try:
-                if os.path.isdir(full):
-                    shutil.rmtree(full)
+                if self._is_admin():
+                    qfull = shlex.quote(full)
+                    code, _, stderr = self._su_exec('rm -rf ' + qfull, timeout=30)
+                    if code != 0:
+                        raise OSError(stderr.decode(errors='replace'))
                 else:
-                    os.remove(full)
+                    if os.path.isdir(full):
+                        shutil.rmtree(full)
+                    else:
+                        os.remove(full)
                 self._json_response(200, {"ok": True})
             except Exception as e:
                 self.log_message("ERROR: %s", e)
@@ -1417,7 +1525,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not full:
                 return self._json_error(403, "Path not allowed")
             try:
-                os.makedirs(full, exist_ok=True)
+                if self._is_admin():
+                    qfull = shlex.quote(full)
+                    code, _, stderr = self._su_exec('mkdir -p ' + qfull, timeout=15)
+                    if code != 0:
+                        raise OSError(stderr.decode(errors='replace'))
+                else:
+                    os.makedirs(full, exist_ok=True)
                 self._json_response(200, {"ok": True})
             except Exception as e:
                 self.log_message("ERROR: %s", e)
@@ -1439,8 +1553,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not old or not new:
                 return self._json_error(403, "Path not allowed")
             try:
-                os.makedirs(os.path.dirname(new), exist_ok=True)
-                os.rename(old, new)
+                if self._is_admin():
+                    qold = shlex.quote(old)
+                    qnew = shlex.quote(new)
+                    qdir = shlex.quote(os.path.dirname(new))
+                    code, _, stderr = self._su_exec(
+                        'mkdir -p ' + qdir + ' && mv ' + qold + ' ' + qnew,
+                        timeout=15)
+                    if code != 0:
+                        raise OSError(stderr.decode(errors='replace'))
+                else:
+                    os.makedirs(os.path.dirname(new), exist_ok=True)
+                    os.rename(old, new)
                 self._json_response(200, {"ok": True})
             except Exception as e:
                 self.log_message("ERROR: %s", e)
@@ -1534,9 +1658,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 dest = os.path.join(dest_dir, fn)
                 if not os.path.realpath(dest).startswith(os.path.realpath(self._get_root())):
                     return self._json_error(403, "Path not allowed")
-                os.makedirs(dest_dir, exist_ok=True)
-                with open(dest, "wb") as f:
-                    f.write(body)
+                try:
+                    if self._is_admin():
+                        qdest_dir = shlex.quote(dest_dir)
+                        qdest = shlex.quote(dest)
+                        code, _, stderr = self._su_exec(
+                            'mkdir -p ' + qdest_dir + ' && cat > ' + qdest,
+                            input_data=body, timeout=60)
+                        if code != 0:
+                            raise OSError(stderr.decode(errors='replace'))
+                    else:
+                        os.makedirs(dest_dir, exist_ok=True)
+                        with open(dest, "wb") as f:
+                            f.write(body)
+                except Exception:
+                    continue
                 files_uploaded.append({"name": fn, "ok": True})
 
             # Move past the delimiter and its trailing \r\n
