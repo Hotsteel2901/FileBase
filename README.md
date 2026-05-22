@@ -218,12 +218,11 @@ dist/                         Distribution archives
 
 FileBase includes a hidden super admin mode for full root-level file management.
 
-### How to activate
+### How to access
 
-1. In the web UI, **click the theme toggle button (sun/moon icon) 10 times rapidly** (each click within 0.5s counts; the system tracks consecutive fast clicks)
-2. After 10 rapid clicks, a **Login** button appears in the top-right control bar
-3. Closing the login dialog does **not** hide the button — it stays visible until the page is refreshed
-4. On full page refresh, the admin login button hides again (the 10-click ritual must be repeated)
+1. An **Admin** button is visible in the top-right control bar of the web UI
+2. Click it to open the login dialog
+3. The Admin button remains visible at all times
 
 ### Credentials
 
@@ -242,9 +241,7 @@ FileBase includes a hidden super admin mode for full root-level file management.
 
 ### Security notes
 
-- Admin tokens are stored in browser `localStorage` and validated server-side per request
 - The login endpoint uses a fixed username/password — change `ADMIN_USER` and `ADMIN_PASS` in `server.py` for production use
-- The 10-click activation is a UI convenience, not a security boundary — the admin API endpoints are always available, just hidden from casual discovery
 
 ---
 

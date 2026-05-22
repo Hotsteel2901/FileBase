@@ -583,8 +583,6 @@ let delIsDir = false;
 let dragCounter = 0;
 let isAdmin = false;
 let adminToken = localStorage.getItem('fb_admin_token') || '';
-let adminRevealed = localStorage.getItem('fb_admin_revealed') === '1';
-let clickTimes = [];
 
 // ─── User Identity ────────────────────────────────
 function generateId() {
@@ -1064,13 +1062,11 @@ function esc(s) {
       btn.textContent = t('logout');
       btn.classList.add('admin-btn');
       btn.onclick = doLogout;
-    } else if (adminRevealed) {
+    } else {
       btn.style.display = '';
       btn.textContent = t('adminBtn');
       btn.classList.remove('admin-btn');
       btn.onclick = showLogin;
-    } else {
-      btn.style.display = 'none';
     }
     document.getElementById('footerRoot').textContent = isAdmin ? '/' : '/sdcard';
   }
@@ -1110,22 +1106,7 @@ function esc(s) {
       if (e.key === 'Enter') document.getElementById('loginPass').focus();
     });
 
-    // Theme toggle: toggles theme + 10 rapid clicks reveals admin login
-    document.getElementById('themeToggle').addEventListener('click', function() {
-      toggleTheme();
-      const now = Date.now();
-      clickTimes = clickTimes.filter(t => now - t < 500);
-      clickTimes.push(now);
-      if (clickTimes.length >= 10) {
-        clickTimes = [];
-        if (!adminRevealed && !isAdmin) {
-          adminRevealed = true;
-          localStorage.setItem('fb_admin_revealed', '1');
-          applyAdminState();
-          toast(t('adminBadges'), 'info');
-        }
-      }
-    });
+    document.getElementById('themeToggle').addEventListener('click', toggleTheme);
     document.getElementById('langToggle').addEventListener('click', () => {
       setLang(getLang() === 'en' ? 'zh' : 'en');
     });
