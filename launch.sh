@@ -6,18 +6,16 @@
 #  Requires: root (su), Python 3 on device
 # ──────────────────────────────────────────────────────────
 
-set -e
-
 PORT=6532
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVER="$SCRIPT_DIR/server.py"
 STATE_FILE="/data/local/tmp/.webserver_state"
 
 # ── Color output ──────────────────────────────────────────
-red()   { echo -e "\033[31m$*\033[0m"; }
-green() { echo -e "\033[32m$*\033[0m"; }
-cyan()  { echo -e "\033[36m$*\033[0m"; }
-yellow(){ echo -e "\033[33m$*\033[0m"; }
+red()   { printf "\033[31m%s\033[0m\n" "$*"; }
+green() { printf "\033[32m%s\033[0m\n" "$*"; }
+cyan()  { printf "\033[36m%s\033[0m\n" "$*"; }
+yellow(){ printf "\033[33m%s\033[0m\n" "$*"; }
 
 # ── Check root ────────────────────────────────────────────
 if [ "$(id -u)" -ne 0 ]; then
@@ -134,7 +132,7 @@ if [ -n "$SUBNET_PREFIX" ]; then
         ip addr add "${BIND_IP}/24" dev "$HOTSPOT_IFACE" 2>/dev/null || true
 
     # Verify it stuck
-    if ip -f inet addr show "$HOTSPOT_IFACE" 2>/dev/null | grep -q "$BIND_IP"; then
+    if ip -f inet addr show "$HOTSPOT_IFACE" 2>/dev/null | grep "$BIND_IP" >/dev/null 2>&1; then
         green "[✓] Alias bound: ${HOTSPOT_IFACE}:${ALIAS_LABEL} → $BIND_IP"
     else
         yellow "[!] Alias binding may have failed — falling back to host IP"
@@ -155,7 +153,7 @@ ALIAS_LABEL=$ALIAS_LABEL
 EOF
 
 # ── Kill any existing server on this port ────────────────
-old_pid=$(ss -tlnp 2>/dev/null | grep ":$PORT " | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1)
+old_pid=$(pgrep -f "python.*server.py" 2>/dev/null | head -1) || true
 if [ -n "$old_pid" ]; then
     echo "[*] Killing existing server (PID $old_pid)..."
     kill "$old_pid" 2>/dev/null || true
