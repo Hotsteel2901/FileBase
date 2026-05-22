@@ -1,0 +1,125 @@
+#!/sbin/sh
+# ──────────────────────────────────────────────────────────────
+#  FileBase — Module Installer
+#  Universal update-binary for Magisk / KernelSU / APatch
+# ──────────────────────────────────────────────────────────────
+
+#################
+# Initialization
+#################
+
+umask 022
+
+# echo before loading util_functions
+ui_print() { echo "$1"; }
+
+OUTFD=$2
+ZIPFILE=$3
+
+[ -z "$OUTFD" ] && OUTFD=1
+
+# Mount /data if needed
+mount /data 2>/dev/null
+
+# Try loading Magisk/KSU util_functions
+if [ -f /data/adb/magisk/util_functions.sh ]; then
+    . /data/adb/magisk/util_functions.sh
+    [ "$MAGISK_VER_CODE" -gt 0 ] && ISMAGISK=true
+elif [ -f /data/adb/ksu/util_functions.sh ]; then
+    . /data/adb/ksu/util_functions.sh
+elif [ -f /data/adb/apd/util_functions.sh ]; then
+    # APatch may share KSU-compatible util_functions
+    . /data/adb/apd/util_functions.sh 2>/dev/null
+fi
+
+# Determine root solution
+if [ "$IS_MAGISK" = true ] || [ "$MAGISK_VER_CODE" -gt 0 ] 2>/dev/null; then
+    ROOT_ENV="Magisk"
+elif [ -n "$KSU" ]; then
+    ROOT_ENV="KernelSU"
+elif command -v apd >/dev/null 2>&1; then
+    ROOT_ENV="APatch"
+else
+    ROOT_ENV="Unknown"
+fi
+
+ui_print "──────────────────────────────────────"
+ui_print "  FileBase v2.0.0"
+ui_print "  Root: $ROOT_ENV"
+ui_print "──────────────────────────────────────"
+
+#################
+# Extract files
+#################
+
+# If already called via Magisk's update-binary, MODPATH is set
+# Otherwise, set a sensible default
+[ -z "$MODPATH" ] && MODPATH="/data/adb/modules_update/filebase"
+
+rm -rf "$MODPATH" 2>/dev/null
+mkdir -p "$MODPATH" 2>/dev/null
+
+ui_print "  → Extracting module..."
+
+# Try unzip from the environment
+UNZIP_BIN=$(command -v unzip 2>/dev/null || echo "/system/bin/unzip")
+if [ ! -x "$UNZIP_BIN" ]; then
+    # Fallback to built-in unzip if available in busybox
+    UNZIP_BIN="busybox unzip"
+fi
+
+$UNZIP_BIN -o "$ZIPFILE" -d "$MODPATH" >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    # Some recoveries need explicit path
+    unzip -o "$ZIPFILE" -d "$MODPATH" >/dev/null 2>&1
+fi
+
+# Set permissions
+find "$MODPATH" -type f -exec chmod 644 {} \; 2>/dev/null
+find "$MODPATH" -type d -exec chmod 755 {} \; 2>/dev/null
+
+# Executable files
+for f in customize.sh action.sh service.sh uninstall.sh common/launch.sh common/stop.sh; do
+    [ -f "$MODPATH/$f" ] && chmod 755 "$MODPATH/$f" 2>/dev/null
+done
+
+# Make python files executable
+find "$MODPATH" -name "*.py" -exec chmod 755 {} \; 2>/dev/null
+
+# Copy common files to module root
+cp -f "$MODPATH/common/server.py" "$MODPATH/server.py" 2>/dev/null
+cp -f "$MODPATH/common/launch.sh" "$MODPATH/launch.sh" 2>/dev/null
+cp -f "$MODPATH/common/stop.sh" "$MODPATH/stop.sh" 2>/dev/null
+
+# Create webroot if not present
+mkdir -p "$MODPATH/webroot" 2>/dev/null
+
+#################
+# Run customize.sh
+#################
+
+if [ -f "$MODPATH/customize.sh" ]; then
+    ui_print "  → Running customize.sh..."
+    . "$MODPATH/customize.sh"
+fi
+
+#################
+# Finalize
+#################
+
+# Remove the common dir from final install (files already copied)
+rm -rf "$MODPATH/common" 2>/dev/null
+
+if [ -z "$KSU" ] && [ "$BOOTMODE" != "true" ]; then
+    # Recovery install — need manual cleanup
+    ui_print "  → Recovery mode detected"
+fi
+
+ui_print "  ✓ FileBase installed successfully"
+ui_print ""
+ui_print "  The module will auto-start on boot."
+ui_print "  Use the Action button in your root"
+ui_print "  manager to control the server."
+ui_print "──────────────────────────────────────"
+
+exit 0

@@ -692,14 +692,12 @@ async function loadDir(path) {
 // ─── Navigation ───────────────────────────────────
   function go(path) { if (!path) path = '/'; currentPath = path; loadDir(path); }
   function goUp() {
-    const rootPath = isAdmin ? '/' : '/sdcard';
+    const rootPath = '/';
     if (currentPath === rootPath) return;
     const parts = currentPath.split('/').filter(Boolean);
     parts.pop();
-    const newPath = '/' + parts.join('/') + (parts.length ? '/' : '/');
-    // Non-admin cannot go above /sdcard
-    if (!isAdmin && !newPath.startsWith('/sdcard')) return;
-    go(newPath || rootPath);
+    const newPath = '/' + parts.join('/') + (parts.length ? '/' : '');
+    go(newPath);
   }
 function refresh() { loadDir(currentPath); }
 
@@ -1091,21 +1089,6 @@ function esc(s) {
     }
     applyAdminState();
   }
-  function handleBrandClick() {
-    const now = Date.now();
-    clickTimes = clickTimes.filter(t => now - t < 500);
-    clickTimes.push(now);
-    if (clickTimes.length >= 10) {
-      clickTimes = [];
-      if (!adminRevealed && !isAdmin) {
-        adminRevealed = true;
-        localStorage.setItem('fb_admin_revealed', '1');
-        applyAdminState();
-        toast(t('adminBadges') + ' &#128274;', 'info');
-      }
-    }
-  }
-
   // ─── Init ─────────────────────────────────────────
   function init() {
     const uid = getUserId();
@@ -1119,9 +1102,6 @@ function esc(s) {
       go(isAdmin ? '/' : '/');
     });
 
-    // Brand click: 10 quick clicks reveals admin login
-    document.querySelector('.brand').addEventListener('click', handleBrandClick);
-
     // Login modal: Enter key submits
     document.getElementById('loginPass').addEventListener('keydown', e => {
       if (e.key === 'Enter') doLogin();
@@ -1130,7 +1110,22 @@ function esc(s) {
       if (e.key === 'Enter') document.getElementById('loginPass').focus();
     });
 
-    document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+    // Theme toggle: toggles theme + 10 rapid clicks reveals admin login
+    document.getElementById('themeToggle').addEventListener('click', function() {
+      toggleTheme();
+      const now = Date.now();
+      clickTimes = clickTimes.filter(t => now - t < 500);
+      clickTimes.push(now);
+      if (clickTimes.length >= 10) {
+        clickTimes = [];
+        if (!adminRevealed && !isAdmin) {
+          adminRevealed = true;
+          localStorage.setItem('fb_admin_revealed', '1');
+          applyAdminState();
+          toast(t('adminBadges'), 'info');
+        }
+      }
+    });
     document.getElementById('langToggle').addEventListener('click', () => {
       setLang(getLang() === 'en' ? 'zh' : 'en');
     });
@@ -1169,7 +1164,7 @@ return {
   deleteItem, closeDelModal, confirmDel,
   renameItem, newFolderModal, newFileModal,
   closeNameModal, confirmName, uploadFiles, init,
-    showLogin, closeLogin, doLogin, doLogout, handleBrandClick
+    showLogin, closeLogin, doLogin, doLogout
 };
 
 })();

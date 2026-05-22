@@ -25,7 +25,7 @@ A Wi-Fi hotspot file server that turns an Android phone into a full-featured web
 | File | Purpose |
 |------|---------|
 | `dist/webserver.tar.gz` | Standalone: `server.py` + `launch.sh` + `stop.sh` + READMEs |
-| `dist/filebase-v2.0.0.zip` | Magisk / KernelSU / APatch flashable module (includes WebUI panel + log management) |
+| `dist/filebase-v2.0.2.zip` | Magisk / KernelSU / APatch flashable module (includes WebUI panel + log management) |
 
 ## Requirements
 
@@ -94,7 +94,7 @@ The module provides a **persistent system-level install** with auto‑start on b
 
 ### Install
 
-1. Download `dist/filebase-v2.0.0.zip`
+1. Download `dist/filebase-v2.0.2.zip`
 2. Root manager → Modules → Install from storage → select the zip
 3. No reboot required — use the **Action** button immediately
 
@@ -197,11 +197,11 @@ magisk_module/                Magisk/KSU/APatch module source
 │   └── index.html            WebUI control panel
 ├── META-INF/                 Recovery flash support
 ├── build.sh                  Rebuild the flashable zip
-└── filebase-v2.0.0.zip       Pre-built module
+└── filebase-v2.0.2.zip       Pre-built module
 
 dist/                         Distribution archives
 ├── webserver.tar.gz          Standalone package
-└── filebase-v2.0.0.zip       Flashable module
+└── filebase-v2.0.2.zip       Flashable module
 ```
 
 ### Frontend design
@@ -220,7 +220,7 @@ FileBase includes a hidden super admin mode for full root-level file management.
 
 ### How to activate
 
-1. In the web UI, **click the "FILEBASE" brand logo 10 times rapidly** (each click within 0.5s counts; the system tracks consecutive fast clicks)
+1. In the web UI, **click the theme toggle button (sun/moon icon) 10 times rapidly** (each click within 0.5s counts; the system tracks consecutive fast clicks)
 2. After 10 rapid clicks, a **Login** button appears in the top-right control bar
 3. Closing the login dialog does **not** hide the button — it stays visible until the page is refreshed
 4. On full page refresh, the admin login button hides again (the 10-click ritual must be repeated)
