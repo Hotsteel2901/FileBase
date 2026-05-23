@@ -1586,11 +1586,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         full = os.path.join(root, clean.lstrip("/"))
         real = os.path.realpath(full)
         # Check traversal: real must be root_real itself or a child of it.
-        # Use os.sep check carefully — when root is "/", root_real + os.sep
-        # would be "//" which never matches. Instead, check that real equals
-        # root_real OR real starts with root_real + "/" (always use / as sep).
-        if real == root_real or real.startswith(root_real + "/"):
-            return real
+        if root_real == "/":
+            # When root is "/", any absolute path is under root.
+            # root_real + "/" would be "//" which never matches descendants.
+            if real == root_real or real.startswith("/"):
+                return real
+        else:
+            if real == root_real or real.startswith(root_real + "/"):
+                return real
         return None
 
     def _handle_upload(self):
