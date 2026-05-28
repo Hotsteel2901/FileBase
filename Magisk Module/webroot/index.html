@@ -4,337 +4,169 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>FileBase Control</title>
-<style>
-:root{--bg:#0c0c0c;--surface:#151515;--surface2:#1e1e1e;--border:#2a2a2a;
-  --text:#e4e4e4;--text2:#707070;--accent:#d4943a;--accent2:#e8a838;
-  --green:#3da060;--red:#d94040}
-@media(prefers-color-scheme:light){
-:root{--bg:#f4f2ed;--surface:#fff;--surface2:#faf8f4;--border:#ddd9d2;
-  --text:#1a1a1a;--text2:#888880;--accent:#b87a20;--accent2:#d4943a;
-  --green:#2d8a4a;--red:#c03030}}
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,'Segoe UI',sans-serif;background:var(--bg);
-  color:var(--text);padding:14px;min-height:100vh;font-size:14px}
-h1{font-size:18px;font-weight:700;margin-bottom:2px}
-h1 span{color:var(--accent)}
-.sub{color:var(--text2);font-size:11px;margin-bottom:12px}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:4px;
-  padding:12px 14px;margin-bottom:10px}
-.card-title{font-size:10px;font-weight:600;margin-bottom:6px;color:var(--text2);
-  text-transform:uppercase;letter-spacing:.5px}
-.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.mono{font-family:'Courier New',monospace;font-size:10px;color:var(--text2)}
-.btn{display:inline-flex;align-items:center;gap:4px;padding:9px 15px;
-  border-radius:3px;border:none;cursor:pointer;font-size:12px;font-weight:600;
-  transition:all .15s;font-family:inherit}
-.btn:active{transform:scale(.97)}
-.btn-start{background:var(--accent);color:#0c0c0c}
-.btn-stop{background:var(--red);color:#fff}
-.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}
-.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
-.btn:disabled{opacity:.4;pointer-events:none}
-.console{background:var(--surface2);border:1px solid var(--border);border-radius:3px;
-  padding:10px;font-family:'Courier New',monospace;font-size:10px;
-  white-space:pre-wrap;max-height:220px;overflow-y:auto;line-height:1.4;
-  color:var(--text2);word-break:break-all}
-.status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px}
-.status-dot.online{background:var(--green);box-shadow:0 0 6px var(--green)}
-.status-dot.offline{background:var(--red)}
-.stats{display:grid;grid-template-columns:1fr 1fr;gap:4px}
-.stat-label{font-size:10px;color:var(--text2)}
-.stat-value{font-size:13px;font-weight:600}
-.diag{font-family:'Courier New',monospace;font-size:10px;padding:6px 8px;
-  border-radius:3px;margin-bottom:8px}
-.diag-ok{background:rgba(61,160,96,.1);color:var(--green)}
-.diag-fail{background:rgba(217,64,64,.1);color:var(--red)}
-select{background:var(--surface2);border:1px solid var(--border);color:var(--text);
-  padding:5px 8px;border-radius:3px;font-size:11px;font-family:inherit}
-.lang-switch{font-size:11px;color:var(--text2);cursor:pointer;margin-bottom:10px;display:inline-block}
-.lang-switch:hover{color:var(--accent)}
-</style>
+<link rel="stylesheet" href="style.css" />
 </head>
 <body>
-<script>
-    if (window.apatch !== undefined && window.apatch.ksu === undefined) {
-        window.ksu = window.apatch
-    }
-</script>
 
-<h1><span>&#9883;</span> FileBase</h1>
-<p class="sub" data-i18n="subtitle">Android File Server — Control Panel</p>
-<div class="lang-switch" id="langBtn" onclick="toggleLang()">EN / 中文</div>
-
-<div class="diag" id="diag">Checking exec API...</div>
-
-<div class="card">
-  <div class="card-title"><span data-i18n="status">Server Status</span></div>
-  <div class="row" style="margin-bottom:8px">
-    <span class="status-dot offline" id="statusDot"></span>
-    <span style="font-weight:600" id="statusText">—</span>
-  </div>
-  <div class="stats" id="statsBox" style="display:none">
-    <div><div class="stat-label">PID</div><div class="stat-value mono" id="statPID">—</div></div>
-    <div><div class="stat-label" data-i18n="bindIp">Bind IP</div><div class="stat-value mono" id="statBind">—</div></div>
-    <div><div class="stat-label" data-i18n="iface">Interface</div><div class="stat-value mono" id="statIface">—</div></div>
-    <div><div class="stat-label" data-i18n="logLevel">Log Level</div><div class="stat-value mono" id="statLogLevel">—</div></div>
+<!-- ═══ TOAST OVERLAY ════════════════════════════════════════════════════ -->
+<div id="toast-overlay" class="toast-overlay hidden">
+  <div id="toast-card" class="toast-card">
+    <div id="toast-title" class="toast-title"></div>
+    <div id="toast-message" class="toast-message"></div>
+    <div class="toast-actions">
+      <button id="toast-secondary" class="secondary-btn hidden">Secondary</button>
+      <button id="toast-tertiary" class="secondary-btn hidden">Tertiary</button>
+      <button id="toast-ok" class="primary-btn">OK</button>
+    </div>
   </div>
 </div>
 
-<div class="card">
-  <div class="card-title"><span data-i18n="controls">Controls</span></div>
-  <div class="row" style="margin-bottom:8px">
-    <button class="btn btn-start" onclick="doAction('start')" id="btnStart">&#9654; <span data-i18n="startBtn">Start</span></button>
-    <button class="btn btn-stop" onclick="doAction('stop')" id="btnStop">&#9632; <span data-i18n="stopBtn">Stop</span></button>
-    <button class="btn btn-outline" onclick="doAction('restart')" id="btnRestart">&#8635; <span data-i18n="restartBtn">Restart</span></button>
-    <button class="btn btn-outline" onclick="refreshStatus()" id="btnRefresh">&#8635; <span data-i18n="refreshBtn">Refresh</span></button>
+<!-- ═══ PAGE: CONTROL ════════════════════════════════════════════════════ -->
+<div id="page-control" class="page">
+  <div class="container page-with-bottom-nav">
+    <h1><span>&#9883;</span> FileBase</h1>
+    <p class="module-version" data-i18n="subtitle">Android File Server — Control Panel</p>
+    <div class="lang-switch" id="langBtn">EN / 中文</div>
+
+    <div class="diag" id="diag">Checking exec API...</div>
+
+    <!-- Status Card -->
+    <div class="info-card">
+      <div class="card-header"><h3 data-i18n="status">Server Status</h3></div>
+      <div class="row" style="margin-bottom:8px">
+        <span class="status-dot offline" id="statusDot"></span>
+        <span style="font-weight:600" id="statusText">—</span>
+      </div>
+      <div class="stats" id="statsBox" style="display:none">
+        <div><div class="stat-label" data-i18n="pid">PID</div><div class="stat-value mono" id="statPID">—</div></div>
+        <div><div class="stat-label" data-i18n="bindIp">Bind IP</div><div class="stat-value mono" id="statBind">—</div></div>
+        <div><div class="stat-label" data-i18n="iface">Interface</div><div class="stat-value mono" id="statIface">—</div></div>
+        <div><div class="stat-label" data-i18n="logLevel">Log Level</div><div class="stat-value mono" id="statLogLevel">—</div></div>
+      </div>
+    </div>
+
+    <!-- Status detail card -->
+    <div class="info-card status-card checking" id="status-row" title="Checking...">
+      <div class="card-header"><h3 data-i18n="status">Status</h3></div>
+      <div class="card-content">
+        <span id="status-bar-text" class="card-value status-text" data-i18n="checking">Checking...</span>
+      </div>
+    </div>
+
+    <!-- Controls Card -->
+    <div class="info-card">
+      <div class="card-header"><h3 data-i18n="controls">Controls</h3></div>
+      <div class="controls-row" style="margin-bottom:8px">
+        <button class="btn-start" id="btnStart">&#9654; <span data-i18n="startBtn">Start</span></button>
+        <button class="btn-stop" id="btnStop">&#9632; <span data-i18n="stopBtn">Stop</span></button>
+      </div>
+      <div class="controls-row">
+        <button class="secondary-btn" id="btnRestart">&#8635; <span data-i18n="restartBtn">Restart</span></button>
+        <button class="secondary-btn" id="btnRefresh">&#8635; <span data-i18n="refreshBtn">Refresh</span></button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:10px">
+        <span data-i18n="logLevelLabel">Log Level:</span>
+        <select id="logLevelSel">
+          <option value="info">Info (brief)</option>
+          <option value="error">Error (errors only)</option>
+          <option value="debug">Debug (full details)</option>
+          <option value="off">Off (disabled)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Console Output -->
+    <div class="console-box">
+      <div class="console-title" data-i18n="output">Console Output</div>
+      <pre id="console">—</pre>
+    </div>
+
+    <!-- CLI Fallback -->
+    <div class="info-card" id="cliFallback" style="display:none">
+      <div class="card-header"><h3 data-i18n="cliFallbackTitle">CLI Fallback</h3></div>
+      <p style="font-size:11px;color:var(--text-muted);margin-bottom:6px" data-i18n="cliFallbackText">WebUI exec API is not available. Use terminal instead:</p>
+      <div class="console-box">
+        <pre>su -c 'sh /data/adb/modules/filebase/action.sh start'
+su -c 'sh /data/adb/modules/filebase/action.sh status'</pre>
+      </div>
+    </div>
   </div>
-  <div style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:6px">
-    <span data-i18n="logLevelLabel">Log Level:</span>
-    <select id="logLevelSel" onchange="onLogLevelChange()">
-      <option value="info">Info (brief)</option>
-      <option value="error">Error (errors only)</option>
-      <option value="debug">Debug (full details)</option>
-      <option value="off">Off (disabled)</option>
-    </select>
+</div>
+
+<!-- ═══ PAGE: LOGS ═══════════════════════════════════════════════════════ -->
+<div id="page-logs" class="page" style="display:none;">
+  <div class="container page-with-bottom-nav">
+    <h1><span>&#9883;</span> FileBase</h1>
+    <p class="module-version" data-i18n="logsTitle">Server Logs</p>
+    <div class="lang-switch" id="langBtn2">EN / 中文</div>
+
+    <div class="controls-row">
+      <button class="secondary-btn" id="btnRefreshLogs">&#8635; <span data-i18n="refreshBtn">Refresh</span></button>
+    </div>
+
+    <div class="console-box">
+      <div class="console-title" data-i18n="logHint">Last 80 lines of server log:</div>
+      <pre id="logConsole">—</pre>
+    </div>
   </div>
 </div>
 
-<div class="card">
-  <div class="card-title"><span data-i18n="output">Console Output</span></div>
-  <div class="console" id="console">—</div>
+<!-- ═══ PAGE: ABOUT ══════════════════════════════════════════════════════ -->
+<div id="page-about" class="page" style="display:none;">
+  <div class="container page-with-bottom-nav">
+    <h1><span>&#9883;</span> FileBase</h1>
+    <p class="module-version" data-i18n="aboutTitle">About / Help</p>
+
+    <div class="manual-card guide-card">
+      <h2>FileBase — Android File Server</h2>
+      <div class="manual-text">
+        <p>Serve <code>/sdcard</code> over hotspot LAN. Browse, upload, download, edit files from any connected device.</p>
+
+        <h3>Quick Start</h3>
+        <ol>
+          <li>Install this module via Magisk / KernelSU / APatch.</li>
+          <li>Open the WebUI from your root manager.</li>
+          <li>Tap <b>Start</b> to launch the server.</li>
+          <li>Connect to the displayed IP from another device.</li>
+        </ol>
+
+        <h3>CLI Commands</h3>
+        <ul>
+          <li><code id="copy-start">su -c 'sh /data/adb/modules/filebase/action.sh start'</code></li>
+          <li><code id="copy-stop">su -c 'sh /data/adb/modules/filebase/action.sh stop'</code></li>
+          <li><code id="copy-status">su -c 'sh /data/adb/modules/filebase/action.sh status'</code></li>
+        </ul>
+
+        <h3>Log Levels</h3>
+        <ul>
+          <li><b>Info</b> — Client IP + HTTP method + status code</li>
+          <li><b>Error</b> — Only 4xx / 5xx responses</li>
+          <li><b>Debug</b> — Timestamp, IP:port, method, full path</li>
+          <li><b>Off</b> — No log file</li>
+        </ul>
+
+        <p><b>License:</b> MIT</p>
+      </div>
+    </div>
+  </div>
 </div>
 
-<div class="card" id="cliFallback" style="display:none">
-  <div class="card-title">CLI Fallback</div>
-  <p style="font-size:11px;color:var(--text2);margin-bottom:6px">WebUI exec API is not available. Use terminal instead:</p>
-  <div class="console">su -c 'sh /data/adb/modules/filebase/action.sh start'
-su -c 'sh /data/adb/modules/filebase/action.sh status'</div>
-</div>
+<!-- ═══ BOTTOM NAV ═══════════════════════════════════════════════════════ -->
+<nav class="bottom-nav">
+  <button id="nav-control" class="bottom-nav-item active" type="button">
+    <span class="bottom-nav-icon">⚡</span>
+    <span class="bottom-nav-label" data-i18n="navControl">Control</span>
+  </button>
+  <button id="nav-logs" class="bottom-nav-item" type="button">
+    <span class="bottom-nav-icon">📋</span>
+    <span class="bottom-nav-label" data-i18n="navLogs">Logs</span>
+  </button>
+  <button id="nav-about" class="bottom-nav-item" type="button">
+    <span class="bottom-nav-icon">ℹ️</span>
+    <span class="bottom-nav-label" data-i18n="navAbout">About</span>
+  </button>
+</nav>
 
-<script>
-// ═══ i18n ═══════════════════════════════════════════════
-var T = {
-  en: {subtitle:'Android File Server — Control Panel',status:'Server Status',bindIp:'Bind IP',iface:'Interface',logLevel:'Log Level',controls:'Controls',startBtn:'Start',stopBtn:'Stop',restartBtn:'Restart',refreshBtn:'Refresh',logLevelLabel:'Log Level:',output:'Console Output',online:'Online',offline:'Offline',noIP:'No hotspot IP',logSaved:'Log level saved',noExec:'WebUI exec API not available — see CLI fallback below',timeout:'Command timed out',dispatched:'Command dispatched — check status below',noRoot:'ksu.exec found but may lack root. Grant root access to KSUWebUIStandalone / MMRL.'},
-  zh: {subtitle:'Android 文件服务器 — 控制面板',status:'服务器状态',bindIp:'绑定 IP',iface:'网卡',logLevel:'日志级别',controls:'控制',startBtn:'启动',stopBtn:'停止',restartBtn:'重启',refreshBtn:'刷新',logLevelLabel:'日志级别：',output:'控制台输出',online:'在线',offline:'离线',noIP:'无热点 IP',logSaved:'日志级别已保存',noExec:'WebUI exec API 不可用 — 请使用下方的终端命令',timeout:'命令超时',dispatched:'命令已发送 — 查看下方状态',noRoot:'检测到 ksu.exec 但可能缺少 root 权限。请在 KSUWebUIStandalone / MMRL 中授予 root 权限。'}
-};
-
-var LANG = (function(){
-  var s = localStorage.getItem('fb_wui_lang');
-  if (s) return s;
-  return (navigator.language || '').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en';
-})();
-
-function t(k) { return (T[LANG] && T[LANG][k]) || (T.en[k] || k); }
-function applyI18n() {
-  var els = document.querySelectorAll('[data-i18n]');
-  for (var i = 0; i < els.length; i++) { els[i].textContent = t(els[i].getAttribute('data-i18n')); }
-  document.getElementById('langBtn').textContent = LANG === 'zh' ? '中文 / EN' : 'EN / 中文';
-}
-function toggleLang() {
-  LANG = LANG === 'en' ? 'zh' : 'en';
-  localStorage.setItem('fb_wui_lang', LANG);
-  applyI18n();
-  refreshStatus();
-}
-
-// ═══ Root exec API ══════════════════════════════════════
-var HAS_API = false;
-var API_METHOD = null;
-
-function checkApi() {
-  if (typeof ksu !== 'undefined' && typeof ksu.exec === 'function') {
-    HAS_API = true;
-    API_METHOD = 'ksu.exec';
-    return 'ksu.exec';
-  }
-  if (typeof exec === 'function') {
-    HAS_API = true;
-    API_METHOD = 'exec()';
-    return 'exec()';
-  }
-  HAS_API = false;
-  API_METHOD = null;
-  return null;
-}
-
-function execRoot(cmd, timeoutMs) {
-  timeoutMs = timeoutMs || 8000;
-  var api = API_METHOD;
-  if (!api) {
-    return Promise.resolve({code: -1, stdout: '', stderr: t('noExec')});
-  }
-  return new Promise(function(resolve) {
-    var done = false;
-    var timer = setTimeout(function() {
-      if (!done) { done = true; resolve({code: -1, stdout: '', stderr: t('timeout')}); }
-    }, timeoutMs);
-    try {
-      if (api === 'ksu.exec') {
-        ksu.exec(cmd, function(code, stdout, stderr) {
-          if (!done) { done = true; clearTimeout(timer); resolve({code: code, stdout: stdout||'', stderr: stderr||''}); }
-        });
-      } else {
-        exec(cmd).then(function(r) {
-          if (!done) { done = true; clearTimeout(timer); resolve(r || {code:0,stdout:'',stderr:''}); }
-        }).catch(function(e) {
-          if (!done) { done = true; clearTimeout(timer); resolve({code:-1, stdout:'', stderr: String(e)}); }
-        });
-      }
-    } catch(e) {
-      if (!done) { done = true; clearTimeout(timer); resolve({code:-1, stdout:'', stderr: String(e)}); }
-    }
-  });
-}
-
-// ═══ Module path ════════════════════════════════════════
-function modPath() { return '/data/adb/modules/filebase'; }
-
-// ═══ Actions ═════════════════════════════════════════════
-var _pollTimers = [];
-
-function clearPolls() {
-  for (var i = 0; i < _pollTimers.length; i++) clearTimeout(_pollTimers[i]);
-  _pollTimers = [];
-}
-
-async function doAction(action) {
-  clearPolls();
-  if (!HAS_API) {
-    document.getElementById('console').textContent = t('noExec');
-    return;
-  }
-  // Validate action against whitelist
-  if (['start', 'stop', 'restart'].indexOf(action) === -1) return;
-
-  var cons = document.getElementById('console');
-  var btnList = document.querySelectorAll('#btnStart,#btnStop,#btnRestart');
-  for (var i = 0; i < btnList.length; i++) btnList[i].disabled = true;
-
-  // Write log level config before start/restart
-  if (action === 'start' || action === 'restart') {
-    var lvl = document.getElementById('logLevelSel').value;
-    // Validate log level against whitelist
-    if (['info','error','debug','off'].indexOf(lvl) === -1) lvl = 'info';
-    await execRoot('mkdir -p ' + modPath() + '/logs && echo ' + lvl + ' > ' + modPath() + '/logs/.config', 3000);
-  }
-
-  cons.textContent = 'Running: ' + action + '...\n';
-
-  // Run action.sh synchronously and capture output for real feedback
-  var timeout = (action === 'start' || action === 'restart') ? 30000 : 15000;
-  var r = await execRoot('sh ' + modPath() + '/action.sh ' + action, timeout);
-
-  var lines = [];
-  if (r.stdout) lines.push(r.stdout);
-  if (r.stderr) lines.push(r.stderr);
-  if (r.code === -1) lines.push(t('timeout'));
-  cons.textContent = lines.join('\n') || '(no output)';
-
-  // Unblock buttons
-  for (var i = 0; i < btnList.length; i++) btnList[i].disabled = false;
-
-  // Refresh status after a short delay
-  _pollTimers.push(setTimeout(refreshStatus, 1500));
-  if (action === 'start' || action === 'restart') {
-    _pollTimers.push(setTimeout(refreshStatus, 5000));
-  }
-}
-
-// ═══ Status refresh ══════════════════════════════════════
-async function refreshStatus() {
-  if (!HAS_API) {
-    document.getElementById('console').textContent = t('noExec');
-    return;
-  }
-
-  var statusCmd =
-    'PID=$(pgrep -f "python.*server\\.py" 2>/dev/null | head -1); ' +
-    'if [ -n "$PID" ]; then ' +
-    '  echo "Server RUNNING"; ' +
-    '  echo "PID: $PID"; ' +
-    '  cat /data/local/tmp/.webserver_state 2>/dev/null; ' +
-    'else echo "Server STOPPED"; fi';
-
-  var r = await execRoot(statusCmd, 5000);
-  var out = r.stdout || '';
-  document.getElementById('console').textContent = out || '(no output)';
-
-  var dot = document.getElementById('statusDot');
-  var txt = document.getElementById('statusText');
-  var box = document.getElementById('statsBox');
-
-  if (out.indexOf('Server RUNNING') !== -1) {
-    dot.className = 'status-dot online';
-    txt.textContent = t('online');
-    box.style.display = 'grid';
-
-    var m = out.match(/PID:\s*(\d+)/);
-    document.getElementById('statPID').textContent = m ? m[1] : '—';
-    m = out.match(/BIND_IP=\s*(\S+)/);
-    document.getElementById('statBind').textContent = m ? m[1] : t('noIP');
-    m = out.match(/HOTSPOT_IFACE=\s*(\S+)/);
-    document.getElementById('statIface').textContent = m ? m[1] : '—';
-  } else {
-    dot.className = 'status-dot offline';
-    txt.textContent = t('offline');
-    box.style.display = 'none';
-  }
-
-  // Read log level from config
-  execRoot('cat ' + modPath() + '/logs/.config 2>/dev/null || echo info', 3000).then(function(r2) {
-    var lvl = (r2.stdout || 'info').trim();
-    document.getElementById('statLogLevel').textContent = lvl;
-    document.getElementById('logLevelSel').value = lvl;
-  });
-}
-
-// ═══ Log level change ════════════════════════════════════
-async function onLogLevelChange() {
-  var lvl = document.getElementById('logLevelSel').value;
-  if (['info','error','debug','off'].indexOf(lvl) === -1) lvl = 'info';
-  await execRoot('mkdir -p ' + modPath() + '/logs && echo ' + lvl + ' > ' + modPath() + '/logs/.config', 3000);
-  document.getElementById('console').textContent = t('logSaved') + ': ' + lvl;
-}
-
-// ═══ Init ════════════════════════════════════════════════
-(function init() {
-  applyI18n();
-
-  var api = checkApi();
-  var diag = document.getElementById('diag');
-  if (api) {
-    diag.className = 'diag diag-ok';
-    diag.textContent = 'API: ' + api + ' (testing...)';
-    document.getElementById('cliFallback').style.display = 'none';
-
-    // Sanity test: can ksu.exec actually run commands?
-    execRoot('echo fb_test_ok', 4000).then(function(r) {
-      if (r.stdout && r.stdout.indexOf('fb_test_ok') !== -1) {
-        diag.textContent = 'API: ' + api + ' (ready)';
-        diag.className = 'diag diag-ok';
-        refreshStatus();
-      } else {
-        diag.textContent = 'API: ' + api + ' — WARNING: ' + t('noRoot');
-        diag.className = 'diag diag-fail';
-        document.getElementById('console').textContent = t('noRoot');
-      }
-    });
-  } else {
-    diag.className = 'diag diag-fail';
-    diag.textContent = 'API: NOT AVAILABLE — install KSUWebUIStandalone or MMRL, or use CLI';
-    document.getElementById('cliFallback').style.display = 'block';
-    document.getElementById('console').textContent = t('noExec');
-  }
-
-  // Restore saved log level
-  if (HAS_API) {
-    execRoot('cat ' + modPath() + '/logs/.config 2>/dev/null || echo info', 3000).then(function(r) {
-      var lvl = (r.stdout || 'info').trim();
-      document.getElementById('logLevelSel').value = lvl;
-      document.getElementById('statLogLevel').textContent = lvl;
-    });
-  }
-})();
-</script>
+<script src="script.js"></script>
 </body>
 </html>
