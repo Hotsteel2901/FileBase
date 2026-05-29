@@ -153,7 +153,7 @@ ALIAS_LABEL=$ALIAS_LABEL
 EOF
 
 # ── Kill any existing server on this port ────────────────
-old_pid=$(pgrep -f "python.*server.py" 2>/dev/null | head -1) || true
+old_pid=$(for p in $(pgrep -f "python.*server\.py" 2>/dev/null); do [ "$p" -ne "$$" ] && echo "$p"; done | head -1) || true
 if [ -n "$old_pid" ]; then
     echo "[*] Killing existing server (PID $old_pid)..."
     kill "$old_pid" 2>/dev/null || true

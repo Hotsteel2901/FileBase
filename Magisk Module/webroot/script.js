@@ -346,7 +346,7 @@ function refreshStatus() {
   }
 
   var statusCmd =
-    'PID=$(pgrep -f "python.*server\\.py" 2>/dev/null | head -1); ' +
+    'PID=$(for p in $(pgrep -f "python.*server\\.py" 2>/dev/null); do [ "$p" -ne "$$" ] && echo "$p"; done | head -1); ' +
     'if [ -n "$PID" ]; then ' +
     '  echo "Server RUNNING"; ' +
     '  echo "PID: $PID"; ' +

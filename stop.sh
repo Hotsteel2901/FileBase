@@ -12,15 +12,15 @@ if [ -f "$STATE_FILE" ]; then
     echo "[*] State loaded: iface=$HOTSPOT_IFACE bind_ip=$BIND_IP"
 fi
 
-# Kill the server process
-pids=$(pgrep -f "python.*server.py" 2>/dev/null || true)
+# Kill the server process (exclude current shell to avoid self-matching)
+pids=$(for p in $(pgrep -f "python.*server\.py" 2>/dev/null); do [ "$p" -ne "$$" ] && echo "$p"; done)
 if [ -n "$pids" ]; then
     for pid in $pids; do
         echo "[*] Killing PID $pid"
         kill "$pid" 2>/dev/null || true
     done
     sleep 1
-    pids=$(pgrep -f "python.*server.py" 2>/dev/null || true)
+    pids=$(for p in $(pgrep -f "python.*server\.py" 2>/dev/null); do [ "$p" -ne "$$" ] && echo "$p"; done)
     if [ -n "$pids" ]; then
         for pid in $pids; do
             kill -9 "$pid" 2>/dev/null || true
