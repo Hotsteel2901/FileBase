@@ -42,7 +42,10 @@ detect_root() {
 
 # ── Get a PID by name ───────────────────────────────────────
 get_pid() {
-    for pid in $(pgrep -f "python.*server.py" 2>/dev/null); do
+    # Exclude the current shell ($$) because the command line of this script
+    # itself contains the regex pattern and would otherwise match pgrep -f.
+    for pid in $(pgrep -f "python.*server\.py" 2>/dev/null); do
+        [ "$pid" -eq "$$" ] && continue
         echo "$pid"
         return 0
     done
@@ -137,6 +140,18 @@ do_start() {
     print_info "Python: $PYTHON"
     print_info "Starting server..."
 
+    # Kill any existing server first (avoid port conflicts / stale aliases)
+    for oldpid in $(pgrep -f "python.*server\.py" 2>/dev/null); do
+        [ "$oldpid" -eq "$$" ] && continue
+        print_info "Killing existing server (PID $oldpid)..."
+        kill "$oldpid" 2>/dev/null || true
+    done
+    sleep 1
+    for oldpid in $(pgrep -f "python.*server\.py" 2>/dev/null); do
+        [ "$oldpid" -eq "$$" ] && continue
+        kill -9 "$oldpid" 2>/dev/null || true
+    done
+
     # Detect hotspot
     HOTSPOT_IFACE=""
     HOTSPOT_IP=""
@@ -201,8 +216,13 @@ HOTSPOT_IFACE=$HOTSPOT_IFACE
 BIND_IP=$BIND_IP
 HOTSPOT_IP=$HOTSPOT_IP
 PORT=$PORT
+ALIAS_LABEL=webserver
 EOF
     fi
+
+    # Ensure log directory exists
+    mkdir -p "${MODPATH}/logs" 2>/dev/null
+    mkdir -p /data/local/webserver 2>/dev/null
 
     # Read log level from config (default info)
     LOG_LVL="info"
@@ -214,17 +234,13 @@ EOF
             off|error|info|debug) ;;  # valid
             *) LOG_LVL="info" ;;       # default for invalid values
         esac
-        mkdir -p "${MODPATH}/logs" 2>/dev/null
     fi
-
-    # Create log directory
-    mkdir -p /data/local/webserver 2>/dev/null
 
     # Launch server in background with log level
     cd "$MODPATH"
     LOG_FILE="${MODPATH}/logs/server.log"
     [ "$LOG_LVL" = "off" ] && LOG_FILE="/dev/null"
-    nohup env LOG_LEVEL="$LOG_LVL" BIND_IP="$BIND_IP" "$PYTHON" -u "$SERVER_PY" > "$LOG_FILE" 2>&1 &
+    LOG_LEVEL="$LOG_LVL" BIND_IP="$BIND_IP" "$PYTHON" -u "$SERVER_PY" > "$LOG_FILE" 2>&1 </dev/null &
     pid=$!
     echo "$pid" > "$PID_FILE"
 
@@ -263,8 +279,9 @@ do_stop() {
     echo ""
 
     stopped=0
-    # Kill by name
-    for pid in $(pgrep -f "python.*server.py" 2>/dev/null); do
+    # Kill by name (exclude current shell to avoid self-matching)
+    for pid in $(pgrep -f "python.*server\.py" 2>/dev/null); do
+        [ "$pid" -eq "$$" ] && continue
         print_info "Killing PID $pid..."
         kill "$pid" 2>/dev/null || true
         stopped=1
@@ -272,7 +289,8 @@ do_stop() {
     sleep 1
 
     # Force kill lingering
-    for pid in $(pgrep -f "python.*server.py" 2>/dev/null); do
+    for pid in $(pgrep -f "python.*server\.py" 2>/dev/null); do
+        [ "$pid" -eq "$$" ] && continue
         kill -9 "$pid" 2>/dev/null || true
     done
 
@@ -295,7 +313,14 @@ do_stop() {
 
     rm -f "$PID_FILE" "$STATE_FILE"
 
-    if [ "$stopped" -eq 1 ] || ! pgrep -f "python.*server.py" >/dev/null 2>&1; then
+    # Verify no real server remains (exclude current shell to avoid self-matching)
+    has_server=0
+    for p in $(pgrep -f "python.*server\.py" 2>/dev/null); do
+        [ "$p" -eq "$$" ] && continue
+        has_server=1
+        break
+    done
+    if [ "$stopped" -eq 1 ] || [ "$has_server" -eq 0 ]; then
         print_ok "Server stopped"
     else
         print_info "Server was not running"
