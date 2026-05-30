@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FileBase — Android File Server</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+--bg:#f5f5f7;--card:#fff;--text:#1d1d1f;--text2:#515256;--accent:#0071e3;
+--border:#d2d2d7;--shadow:0 4px 24px rgba(0,0,0,.08);--radius:12px;
+--codebg:#f0f0f5;--inlinecode:#555;
+}
+[data-theme="dark"]{
+--bg:#1d1d1f;--card:#2a2a2e;--text:#f5f5f7;--text2:#a1a1a6;--accent:#64b5f6;
+--border:#3a3a3e;--shadow:0 4px 24px rgba(0,0,0,.4);--codebg:#2a2a2e;--inlinecode:#ccc;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+background:var(--bg);color:var(--text);line-height:1.6;transition:background .3s,color .3s}
+.container{max-width:860px;margin:0 auto;padding:2rem 1.5rem}
+header{text-align:center;padding:4rem 0 3rem}
+h1{font-size:2.8rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.5rem}
+.tagline{font-size:1.2rem;color:var(--text2);margin-bottom:2rem}
+.theme-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1.2rem;
+border:1px solid var(--border);border-radius:999px;background:var(--card);color:var(--text);
+cursor:pointer;font-size:.9rem;transition:box-shadow .2s}
+.theme-btn:hover{box-shadow:var(--shadow)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1.5rem;margin:2rem 0}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+padding:1.8rem;transition:box-shadow .3s}
+.card:hover{box-shadow:var(--shadow)}
+.card h3{font-size:1.1rem;margin-bottom:.8rem;color:var(--accent)}
+.card p{color:var(--text2);font-size:.95rem}
+.features{margin:2.5rem 0}
+.features h2{font-size:1.6rem;margin-bottom:1.2rem;text-align:center}
+.features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem}
+.feature{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+padding:1.2rem;font-size:.9rem}
+.feature strong{display:block;margin-bottom:.3rem;color:var(--accent)}
+.install{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+padding:2rem;margin:2.5rem 0}
+.install h2{font-size:1.4rem;margin-bottom:1rem}
+.install pre{background:var(--codebg);border-radius:8px;padding:1rem;overflow-x:auto;
+font-size:.85rem;margin:.8rem 0}
+.install code{font-family:"SF Mono",Monaco,"Cascadia Code",monospace;color:var(--inlinecode)}
+.cta{text-align:center;margin:3rem 0}
+.btn{display:inline-block;padding:.8rem 2rem;background:var(--accent);color:#fff;
+border-radius:999px;text-decoration:none;font-weight:600;transition:opacity .2s}
+.btn:hover{opacity:.85}
+footer{text-align:center;padding:2rem;color:var(--text2);font-size:.85rem;border-top:1px solid var(--border);margin-top:3rem}
+@media(max-width:600px){
+h1{font-size:2rem}
+.cards{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="container">
+<header>
+<h1>FileBase</h1>
+<p class="tagline" data-i18n="tagline">Wi‑Fi hotspot file server — turn your Android phone into a full-featured web file manager</p>
+<button class="theme-btn" onclick="toggleTheme()">
+<span id="theme-icon">◐</span> <span data-i18n="theme">Theme</span>
+</button>
+</header>
+
+<div class="cards">
+<div class="card">
+<h3 data-i18n="c1_title">Browse & Edit</h3>
+<p data-i18n="c1_desc">Directory listing, sortable columns, breadcrumb navigation, live search, and full-screen code editor for text files</p>
+</div>
+<div class="card">
+<h3 data-i18n="c2_title">Upload & Download</h3>
+<p data-i18n="c2_desc">Button upload, drag-and-drop with progress bar, RFC 5987 UTF-8 filename encoding, binary-safe multipart parser</p>
+</div>
+<div class="card">
+<h3 data-i18n="c3_title">File Management</h3>
+<p data-i18n="c3_desc">Create files/folders, rename, delete with styled confirmation dialog</p>
+</div>
+<div class="card">
+<h3 data-i18n="c4_title">Security</h3>
+<p data-i18n="c4_desc">Path traversal protection, POST size limits, CSRF origin check, admin login for superuser file access</p>
+</div>
+</div>
+
+<div class="features">
+<h2 data-i18n="feat_title">Features</h2>
+<div class="features-grid">
+<div class="feature"><strong data-i18n="f1">i18n</strong> English / 中文 switch with localStorage persistence</div>
+<div class="feature"><strong data-i18n="f2">Theme</strong> Dark / Light mode, auto-follows system prefers-color-scheme</div>
+<div class="feature"><strong data-i18n="f3">Responsive</strong> Desktop table layout → mobile card layout at 700px</div>
+<div class="feature"><strong data-i18n="f4">No Client</strong> Works from any web browser on any device</div>
+<div class="feature"><strong data-i18n="f5">Hotspot Mode</strong> Auto-detects hotspot interface, sets up iptables</div>
+<div class="feature"><strong data-i18n="f6">Root Module</strong> Magisk / KernelSU / APatch flashable with auto-start</div>
+</div>
+</div>
+
+<div class="install">
+<h2 data-i18n="install_title">Quick Start</h2>
+<p data-i18n="install_desc">Push files to device and launch:</p>
+<pre><code>adb push server.py launch.sh stop.sh /data/local/tmp/
+adb shell chmod +x /data/local/tmp/launch.sh /data/local/tmp/stop.sh
+su
+sh /data/local/tmp/launch.sh</code></pre>
+<p data-i18n="install_note">Connect any browser to the displayed IP address.</p>
+
+<h2 data-i18n="module_title" style="margin-top:1.5rem">Magisk Module</h2>
+<p data-i18n="module_desc">Download <code>dist/filebase-v2.0.2.zip</code> and install via Magisk / KernelSU / APatch. Supports boot auto-start and WebUI panel.</p>
+</div>
+
+<div class="cta">
+<a class="btn" href="https://github.com/Hotsteel2901/FileBase" data-i18n="btn">View on GitHub</a>
+</div>
+
+<footer>
+<p>FileBase — MIT License</p>
+</footer>
+</div>
+
+<script>
+var translations={
+en:{
+tagline:"Wi‑Fi hotspot file server — turn your Android phone into a full-featured web file manager",
+theme:"Theme",
+c1_title:"Browse & Edit",c1_desc:"Directory listing, sortable columns, breadcrumb navigation, live search, and full-screen code editor for text files",
+c2_title:"Upload & Download",c2_desc:"Button upload, drag-and-drop with progress bar, RFC 5987 UTF-8 filename encoding, binary-safe multipart parser",
+c3_title:"File Management",c3_desc:"Create files/folders, rename, delete with styled confirmation dialog",
+c4_title:"Security",c4_desc:"Path traversal protection, POST size limits, CSRF origin check, admin login for superuser file access",
+feat_title:"Features",
+f1:"i18n",f2:"Theme",f3:"Responsive",f4:"No Client",f5:"Hotspot Mode",f6:"Root Module",
+install_title:"Quick Start",install_desc:"Push files to device and launch:",
+install_note:"Connect any browser to the displayed IP address.",
+module_title:"Magisk Module",module_desc:"Download dist/filebase-v2.0.2.zip and install via Magisk / KernelSU / APatch. Supports boot auto-start and WebUI panel.",
+btn:"View on GitHub"
+},
+zh:{
+tagline:"Wi‑Fi热点文件服务器 — 让你的Android手机成为功能完整的网页文件管理器",
+theme:"主题",
+c1_title:"浏览 & 编辑",c1_desc:"目录列表、可排序列、面包屑导航、实时搜索、文本文件全屏代码编辑器",
+c2_title:"上传 & 下载",c2_desc:"按钮上传、拖放上传带进度条、RFC 5987 UTF-8文件名编码、二进制安全multipart解析",
+c3_title:"文件管理",c3_desc:"创建文件/文件夹、重命名、带确认对话框的删除",
+c4_title:"安全",c4_desc:"路径遍历保护、POST大小限制、CSRF来源检查、管理员登录获取超级用户文件访问权限",
+feat_title:"功能特点",
+f1:"国际化",f2:"主题",f3:"响应式",f4:"免客户端",f5:"热点模式",f6:"Root模块",
+install_title:"快速开始",install_desc:"推送文件到设备并启动：",
+install_note:"用浏览器连接到显示的IP地址。",
+module_title:"Magisk模块",module_desc:"下载dist/filebase-v2.0.2.zip并通过Magisk / KernelSU / APatch安装。支持开机自启和WebUI面板。",
+btn:"在GitHub上查看"
+}
+};
+
+function getLang(){return localStorage.getItem('lang')||(navigator.language.startsWith('zh')?'zh':'en');}
+
+function applyLang(){
+var lang=getLang();
+document.querySelectorAll('[data-i18n]').forEach(function(el){
+var key=el.getAttribute('data-i18n');
+if(translations[lang]&&translations[lang][key]){
+if(el.tagName==='BUTTON'&&key==='theme'){return;}
+el.textContent=translations[lang][key];
+}
+});
+document.documentElement.lang=lang;
+}
+
+function toggleTheme(){
+var html=document.documentElement;
+var dark=html.getAttribute('data-theme')==='dark';
+html.setAttribute('data-theme',dark?'light':'dark');
+localStorage.setItem('theme',dark?'light':'dark');
+document.getElementById('theme-icon').textContent=dark?'◐':'◑';
+}
+
+function initTheme(){
+var saved=localStorage.getItem('theme');
+if(saved){document.documentElement.setAttribute('data-theme',saved);}
+else if(window.matchMedia('(prefers-color-scheme: dark)').matches){
+document.documentElement.setAttribute('data-theme','dark');
+}
+if(document.documentElement.getAttribute('data-theme')==='dark'){
+document.getElementById('theme-icon').textContent='◑';
+}else{
+document.getElementById('theme-icon').textContent='◐';
+}
+}
+
+initTheme();
+applyLang();
+
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(e){
+if(!localStorage.getItem('theme')){
+document.documentElement.setAttribute('data-theme',e.matches?'dark':'light');
+initTheme();
+}
+});
+</script>
+</body>
+</html>
