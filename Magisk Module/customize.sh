@@ -47,16 +47,11 @@ chmod 755 /data/local/webserver/server.py   2>/dev/null
 chmod 755 /data/local/webserver/launch.sh   2>/dev/null
 chmod 755 /data/local/webserver/stop.sh     2>/dev/null
 
-# ── Immediate WebUI activation ───────────────────────────
-# Some root managers need the module files in the active modules
-# directory before WebUI is accessible without reboot.
-MODULE_DIR="/data/adb/modules/filebase"
-if [ -n "$MODPATH" ] && [ -d "$MODPATH" ]; then
-    mkdir -p "$MODULE_DIR"
-    cp -af "$MODPATH/." "$MODULE_DIR/" 2>/dev/null || true
-    rm -f "$MODULE_DIR/disable" "$MODULE_DIR/remove" 2>/dev/null || true
-    ui_print "  → WebUI activated immediately"
-fi
+# ── WebUI activation ─────────────────────────────────────
+# Magisk/KSU will handle module activation automatically.
+# The webroot files are already in $MODPATH/webroot/ and will
+# be accessible after reboot or when Magisk mounts the module.
+ui_print "  → WebUI files installed"
 
 # Check for Python availability
 PYTHON_OK=0

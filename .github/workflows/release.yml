@@ -17,7 +17,8 @@ jobs:
       - name: Package release
         run: |
           mkdir -p release
-          zip release/filebase.zip server.py launch.sh stop.sh
+          cd "Magisk Module"
+          zip -r ../release/filebase.zip . -x "*.git*" "*.DS_Store"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
