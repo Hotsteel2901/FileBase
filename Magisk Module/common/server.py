@@ -1274,10 +1274,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         msg = format % args
         stripped = msg.strip()
         if LOG_LEVEL == "error":
-            # Only log status-code messages that are 4xx/5xx; skip request lines
-            if not (stripped.isdigit() and stripped.startswith(("4", "5"))):
+            # Only log 4xx/5xx status codes; skip request lines
+            if not (len(stripped) == 3 and stripped.isdigit() and stripped[0] in "45"):
                 return
-        if LOG_LEVEL == "debug":
+            sys.stderr.write("[server] %s - [%s] %s\n" %
+                             (self.client_address[0],
+                              self.log_date_time_string(), msg))
+        elif LOG_LEVEL == "debug":
             import time
             ts = time.strftime("%H:%M:%S")
             sys.stderr.write("[%s] %s:%d %s| %s\n" %
