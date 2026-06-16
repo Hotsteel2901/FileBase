@@ -346,8 +346,10 @@ function refreshStatus() {
   }
 
   var statusCmd =
-    'PID=$(for p in $(pgrep -f "python.*server\\.py" 2>/dev/null); do [ "$p" -ne "$$" ] && echo "$p"; done | head -1); ' +
-    'if [ -n "$PID" ]; then ' +
+    // Use PID file (written by action.sh) as primary detection — avoids
+    // pgrep -f which is not available in all ksu.exec environments.
+    'PID=$(cat /data/local/webserver/.server_pid 2>/dev/null); ' +
+    'if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then ' +
     '  echo "Server RUNNING"; ' +
     '  echo "PID: $PID"; ' +
     '  cat /data/local/tmp/.webserver_state 2>/dev/null; ' +

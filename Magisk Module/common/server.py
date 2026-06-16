@@ -1287,9 +1287,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                              (ts, self.client_address[0],
                               self.client_address[1], self.command, msg))
         else:
-            sys.stderr.write("[server] %s - [%s] %s\n" %
-                             (self.client_address[0],
-                              self.log_date_time_string(), msg))
+            sys.stderr.write("[%s] %s - [%s] \"%s %s\" %s\n" %
+                             (HOST,
+                              self.client_address[0],
+                              self.log_date_time_string(),
+                              self.command, self.path, msg))
 
     # ── GET ──────────────────────────────────────────────────────────────
     def do_GET(self):
