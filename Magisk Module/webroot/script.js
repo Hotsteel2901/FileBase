@@ -309,16 +309,6 @@ function esc(s) {
     .replace(/"/g, "&quot;");
 }
 
-function setStatusCard(state, text, title) {
-  var row = document.getElementById("status-row");
-  var txt = document.getElementById("status-bar-text");
-  if (!row || !txt) return;
-  row.classList.remove("ok", "mismatch", "error", "checking");
-  row.classList.add(state);
-  txt.textContent = text;
-  row.title = title ? title : text;
-}
-
 function setConsole(text) {
   var el = document.getElementById("console");
   if (el) el.textContent = text || "—";
@@ -338,58 +328,15 @@ function setButtonsDisabled(disabled) {
 }
 
 // ─── Status refresh ───────────────────────────────────────────────────────
+// Runs action.sh status and shows its raw output in the console.
+// No automated detection — the user sees the same output as CLI.
 function refreshStatus() {
   if (!HAS_API) {
     setConsole(t("noExec"));
-    setStatusCard("error", t("offline"), t("noExec"));
     return;
   }
-
-  // Use heartbeat file (written by server.py every 10 s) — pure file I/O,
-  // no pgrep / kill dependency that may be unavailable in ksu.exec.
-  var statusCmd =
-    'HBT=$(cat /data/local/webserver/.heartbeat 2>/dev/null); ' +
-    'if [ -n "$HBT" ] && [ "$(( $(date +%s 2>/dev/null || echo 0) - HBT ))" -lt 20 ]; then ' +
-    '  echo "Server RUNNING"; ' +
-    '  echo "PID: $(cat /data/local/webserver/.server_pid 2>/dev/null || echo ?)"; ' +
-    '  cat /data/local/tmp/.webserver_state 2>/dev/null; ' +
-    'else echo "Server STOPPED"; fi';
-
-  var out = kexec_all(statusCmd);
-  setConsole(out || "(no output)");
-
-  var dot = document.getElementById("statusDot");
-  var txt = document.getElementById("statusText");
-  var box = document.getElementById("statsBox");
-
-  if (out.indexOf("Server RUNNING") !== -1) {
-    dot.className = "status-dot online";
-    txt.textContent = t("online");
-    if (box) box.style.display = "grid";
-
-    var m = out.match(/PID:\s*(\d+)/);
-    document.getElementById("statPID").textContent = m ? m[1] : "—";
-    m = out.match(/BIND_IP=\s*(\S+)/);
-    document.getElementById("statBind").textContent = m ? m[1] : t("noIP");
-    m = out.match(/HOTSPOT_IFACE=\s*(\S+)/);
-    document.getElementById("statIface").textContent = m ? m[1] : "—";
-
-    setStatusCard("ok", t("running"), t("running"));
-  } else {
-    dot.className = "status-dot offline";
-    txt.textContent = t("offline");
-    if (box) box.style.display = "none";
-    document.getElementById("statPID").textContent = "—";
-    document.getElementById("statBind").textContent = "—";
-    document.getElementById("statIface").textContent = "—";
-    setStatusCard("error", t("stopped"), t("stopped"));
-  }
-
-  var lvlOut = kexec_all("cat " + MODDIR + "/logs/.config 2>/dev/null || echo info");
-  var lvl = (lvlOut || "info").trim();
-  var sel = document.getElementById("logLevelSel");
-  if (sel) sel.value = lvl;
-  document.getElementById("statLogLevel").textContent = lvl;
+  var raw = kexec_all("sh " + ACTION_SH + " status");
+  setConsole(raw || "(no output)");
 }
 
 // ─── Actions ──────────────────────────────────────────────────────────────
@@ -455,7 +402,6 @@ function onLogLevelChange() {
   if (["info", "error", "debug", "off"].indexOf(lvl) === -1) lvl = "info";
   kexec_all("mkdir -p " + MODDIR + "/logs && echo " + lvl + " > " + MODDIR + "/logs/.config");
   setConsole(t("logSaved") + ": " + lvl);
-  document.getElementById("statLogLevel").textContent = lvl;
 }
 
 // ─── Logs page ────────────────────────────────────────────────────────────
@@ -535,7 +481,6 @@ document.addEventListener("DOMContentLoaded", function() {
     var lvl = (lvlOut || "info").trim();
     var sel = document.getElementById("logLevelSel");
     if (sel) sel.value = lvl;
-    document.getElementById("statLogLevel").textContent = lvl;
   }
 
   document.getElementById("btnStart").addEventListener("click", function() { doAction("start"); });
