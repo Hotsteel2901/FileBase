@@ -1752,6 +1752,25 @@ def main():
         print("[*] Could not detect hotspot interface")
         print("[*] Server listening on all interfaces port %d" % PORT)
 
+    # ── Heartbeat daemon ──────────────────────────────────────────────────
+    # Writes epoch timestamp to disk every 10 s. The WebUI detects
+    # server liveness by checking how fresh this file is — no pgrep needed.
+    import threading
+    HBT_FILE = "/data/local/webserver/.heartbeat"
+    os.makedirs(os.path.dirname(HBT_FILE), exist_ok=True)
+
+    def _heartbeat():
+        import time as _time
+        while True:
+            try:
+                with open(HBT_FILE, "w") as f:
+                    f.write(str(int(_time.time())))
+            except Exception:
+                pass
+            _time.sleep(10)
+
+    threading.Thread(target=_heartbeat, daemon=True).start()
+
     server = http.server.HTTPServer((HOST, PORT), Handler)
     server.request_queue_size = 16
     print("[*] Serving /sdcard on port %d — press Ctrl+C to stop" % PORT)

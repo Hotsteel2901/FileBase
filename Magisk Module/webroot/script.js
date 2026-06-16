@@ -345,13 +345,13 @@ function refreshStatus() {
     return;
   }
 
+  // Use heartbeat file (written by server.py every 10 s) — pure file I/O,
+  // no pgrep / kill dependency that may be unavailable in ksu.exec.
   var statusCmd =
-    // Use PID file (written by action.sh) as primary detection — avoids
-    // pgrep -f which is not available in all ksu.exec environments.
-    'PID=$(cat /data/local/webserver/.server_pid 2>/dev/null); ' +
-    'if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then ' +
+    'HBT=$(cat /data/local/webserver/.heartbeat 2>/dev/null); ' +
+    'if [ -n "$HBT" ] && [ "$(( $(date +%s 2>/dev/null || echo 0) - HBT ))" -lt 20 ]; then ' +
     '  echo "Server RUNNING"; ' +
-    '  echo "PID: $PID"; ' +
+    '  echo "PID: $(cat /data/local/webserver/.server_pid 2>/dev/null || echo ?)"; ' +
     '  cat /data/local/tmp/.webserver_state 2>/dev/null; ' +
     'else echo "Server STOPPED"; fi';
 
