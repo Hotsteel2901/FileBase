@@ -1,7 +1,7 @@
 id=filebase
 name=FileBase — Android File Server
-version=v2.0.2
-versionCode=202
+version=v2.0.3
+versionCode=203
 author=FileBase Developers
 description=Serve /sdcard over hotspot LAN. Browse, upload, download, edit files from any connected device. WebUI control panel included. Supports Magisk, KernelSU, APatch.
 minMagisk=28000
