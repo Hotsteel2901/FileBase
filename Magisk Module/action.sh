@@ -86,8 +86,6 @@ do_status() {
         fi
 
         # Test if server responds
-        BIND_IP=""
-        [ -f "$STATE_FILE" ] && . "$STATE_FILE" 2>/dev/null
         TEST_ADDR="${BIND_IP:-127.0.0.1}"
         if curl -s --max-time 2 "http://${TEST_ADDR}:${PORT}/" >/dev/null 2>&1; then
             print_ok "Server responds OK"
