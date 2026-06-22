@@ -65,7 +65,7 @@ INDEX_HTML = r"""<!DOCTYPE html>
 }
 
 /* ═══ BASE ═══ */
-html{font-size:15px;-webkit-text-size-adjust:100%}
+html{font-size:15px;-webkit-text-size-adjust:100%;scroll-behavior:smooth}
 body{
   font-family:'Figtree',-apple-system,'Segoe UI','Helvetica Neue',sans-serif;
   background:var(--bg);color:var(--text);min-height:100vh;
@@ -125,7 +125,7 @@ input,button,textarea{font-family:inherit;font-size:inherit}
   padding:5px 12px;border-radius:2px;cursor:pointer;font-size:12px;font-weight:600;
   transition:all .15s;display:flex;align-items:center;gap:5px;user-select:none;
 }
-.ctrl-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-dim)}
+.ctrl-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-dim);transform:translateY(-1px)}
 .ctrl-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 
 /* ═══ TOOLBAR ═══ */
@@ -139,7 +139,8 @@ input,button,textarea{font-family:inherit;font-size:inherit}
   transition:all .15s;display:inline-flex;align-items:center;gap:6px;
   white-space:nowrap;user-select:none;
 }
-.tool-btn:hover{color:var(--text);border-color:var(--border-hi);background:var(--surface-3)}
+.tool-btn:hover{color:var(--text);border-color:var(--border-hi);background:var(--surface-3);transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+.tool-btn{transition:all .2s}
 .tool-btn:active{transform:scale(.97)}
 .tool-btn.primary{background:var(--accent-dim);color:var(--accent);border-color:var(--accent)}
 .tool-btn.primary:hover{background:var(--accent);color:#0c0c0c}
@@ -176,11 +177,11 @@ input,button,textarea{font-family:inherit;font-size:inherit}
 .file-table thead th.sorted{color:var(--accent)}
 .file-table thead th .sort-arrow{margin-left:4px;font-size:10px;opacity:.5}
 .file-table thead th.sorted .sort-arrow{opacity:1;color:var(--accent)}
-.file-row{
+.file-row{transition:all .2s;
   border-bottom:1px solid var(--border);transition:background .12s;
   animation:slideUp .25s ease both;
 }
-.file-row:hover{background:var(--surface-2)}
+.file-row:hover{background:var(--surface-2);transform:translateX(2px)}
 .file-row td{padding:8px 16px;vertical-align:middle}
 .file-name{display:flex;align-items:center;gap:10px;min-width:0}
 .file-icon{
@@ -340,7 +341,7 @@ input,button,textarea{font-family:inherit;font-size:inherit}
 }
 
 /* ═══ LOADING SHIMMER ═══ */
-.loading .file-row{
+.loading .file-row{transition:all .2s;
   background:linear-gradient(90deg,var(--surface) 25%,var(--surface-2) 50%,var(--surface) 75%);
   background-size:200% 100%;
   animation:shimmer 1.5s infinite;

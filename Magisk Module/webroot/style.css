@@ -51,6 +51,7 @@
 }
 
 html {
+  scroll-behavior: smooth;
   min-height: 100%;
   background: var(--page-bg);
 }
@@ -191,6 +192,7 @@ button {
 
 button:hover:not(:disabled) { background: #e9ecef; }
 button:disabled { opacity: 0.58; cursor: not-allowed; }
+button:active:not(:disabled) { transform: scale(0.97); }
 
 .secondary-btn {
   background: var(--surface-muted);
@@ -383,7 +385,9 @@ pre {
   -webkit-overflow-scrolling: touch;
   padding: 18px 18px 14px;
   border-radius: var(--radius-xl);
-  background: rgba(255, 255, 255, 0.98);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--text-main);
   box-shadow: 0 18px 60px rgba(15, 23, 42, 0.22);
 }
@@ -445,7 +449,9 @@ pre {
   justify-content: flex-end;
   margin-top: 12px;
   padding-top: 12px;
-  background: rgba(255, 255, 255, 0.98);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 .toast-actions.hidden, .toast-actions .hidden, #toast-secondary.hidden, #toast-tertiary.hidden {
   display: none !important;
@@ -482,7 +488,9 @@ pre {
   margin: 0;
   padding: 0 0 env(safe-area-inset-bottom, 0);
   border-top: 1px solid rgba(15, 23, 42, 0.10);
-  background: rgba(255, 255, 255, 0.98);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   box-shadow: 0 -2px 12px rgba(15, 23, 42, 0.08);
 }
 .bottom-nav-item {
@@ -689,7 +697,9 @@ pre {
   .spinner { border-color: rgba(232, 168, 56, 0.22); border-top-color: var(--accent); }
 
   .bottom-nav {
-    background: rgba(20, 24, 28, 0.98);
+    background: rgba(20, 24, 28, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border-top-color: rgba(255, 255, 255, 0.08);
     box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.35);
   }
