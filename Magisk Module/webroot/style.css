@@ -180,3 +180,36 @@ select:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--b
 .about ul.cmd-list li{margin:6px 0}
 .about code.copy-cmd{cursor:pointer;transition:all .15s}
 .about code.copy-cmd:active{background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 40%,transparent);color:var(--brand)}
+
+/* ── Motion ─────────────────────────────────────────────────────────────── */
+@keyframes cardIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes pageIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes pulseRing{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 45%,transparent)}
+  70%{box-shadow:0 0 0 9px rgba(0,0,0,0)}100%{box-shadow:0 0 0 0 rgba(0,0,0,0)}}
+@keyframes tabPop{0%{transform:scale(.8)}60%{transform:scale(1.14)}100%{transform:scale(1)}}
+
+.card{animation:cardIn .38s cubic-bezier(.2,.8,.2,1) backwards}
+#page-control>.card:nth-child(1){animation-delay:.02s}
+#page-control>.card:nth-child(2){animation-delay:.08s}
+#page-control>.card:nth-child(3){animation-delay:.14s}
+.page:not(.hidden){animation:pageIn .3s cubic-bezier(.2,.8,.2,1) both}
+
+.dot-on{animation:pulseRing 2.2s ease-out infinite}
+.tab:active{transform:scale(.94)}
+.tab .tab-icon{transition:transform .2s cubic-bezier(.2,.8,.2,1)}
+.tab.is-active .tab-icon{animation:tabPop .34s cubic-bezier(.2,.85,.2,1)}
+.brand-mark{transition:transform .3s cubic-bezier(.2,.8,.2,1)}
+.brand-mark:active{transform:rotate(-8deg) scale(.94)}
+.btn svg{transition:transform .2s cubic-bezier(.2,.8,.2,1)}
+.btn:hover svg{transform:scale(1.08)}
+.ghost{transition:transform .16s,color .16s,border-color .16s,background .16s}
+.ghost:active{transform:scale(.96)}
+.badge{transition:color .25s,border-color .25s,background .25s}
+select{transition:border-color .16s,box-shadow .16s,background-color .16s}
+.console{animation:cardIn .4s cubic-bezier(.2,.8,.2,1) both;transition:background .25s}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;
+    transition-duration:.001ms !important}
+  .dot-on{animation:none}
+}

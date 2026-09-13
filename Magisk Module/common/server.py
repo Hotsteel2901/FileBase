@@ -104,6 +104,7 @@ body{
   background:var(--bg);background-image:var(--bg-grad);background-attachment:fixed;
   color:var(--text);min-height:100vh;display:flex;flex-direction:column;
   -webkit-font-smoothing:antialiased;animation:fade .3s ease;
+  transition:background-color .3s ease,color .3s ease;
 }
 ::-webkit-scrollbar{width:8px;height:8px}
 ::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:99px;border:2px solid transparent;background-clip:content-box}
@@ -115,9 +116,17 @@ input,button,textarea,select{font:inherit;color:inherit}
 
 @keyframes fade{from{opacity:0}to{opacity:1}}
 @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes rowIn{from{opacity:0;transform:translateY(10px) scale(.995)}to{opacity:1;transform:none}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+@keyframes backdropIn{from{opacity:0}to{opacity:1}}
+@keyframes popIn{from{opacity:0;transform:translateY(10px) scale(.965)}to{opacity:1;transform:none}}
+@keyframes toastIn{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+@keyframes barFlow{0%{background-position:0% 50%}100%{background-position:200% 50%}}
+@keyframes dropPulse{0%,100%{transform:scale(1);border-color:var(--brand)}50%{transform:scale(1.03);border-color:var(--brand-2)}}
+@keyframes badgeIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:none}}
 
 /* ═══ Top bar ═════════════════════════════════════════════════════════════ */
 .topbar{
@@ -231,8 +240,9 @@ input,button,textarea,select{font:inherit;color:inherit}
 .file-table thead th.sorted{color:var(--brand)}
 .sort-arrow{margin-left:5px;font-size:9px;opacity:.45}
 .file-table thead th.sorted .sort-arrow{opacity:1;color:var(--brand)}
-.file-row{border-bottom:1px solid var(--border);animation:rise .22s ease both}
-.file-row:hover{background:color-mix(in srgb,var(--brand) 5%,var(--surface))}
+.file-row{border-bottom:1px solid var(--border);animation:rowIn .32s cubic-bezier(.2,.75,.2,1) backwards;
+  transition:background .16s,transform .18s}
+.file-row:hover{background:color-mix(in srgb,var(--brand) 6%,var(--surface));transform:translateX(2px)}
 .file-row td{padding:9px 18px;vertical-align:middle;overflow:hidden}
 .file-name{display:flex;align-items:center;gap:11px;min-width:0}
 .file-icon{
@@ -240,7 +250,9 @@ input,button,textarea,select{font:inherit;color:inherit}
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10.5px;font-weight:700;
   background:var(--surface-3);color:var(--text-2);
   border:1px solid var(--border);letter-spacing:.02em;
+  transition:transform .2s cubic-bezier(.2,.8,.2,1),background .2s,color .2s,border-color .2s;
 }
+.file-row:hover .file-icon{transform:scale(1.08)}
 .file-icon.folder{
   color:var(--brand);background:var(--brand-soft);
   border-color:color-mix(in srgb,var(--brand) 30%,transparent);
@@ -264,6 +276,7 @@ input,button,textarea,select{font:inherit;color:inherit}
 .empty-state-icon{
   width:56px;height:56px;border-radius:18px;display:grid;place-items:center;
   background:var(--surface-2);border:1px solid var(--border);color:var(--text-3);
+  animation:floaty 3.6s ease-in-out infinite;
 }
 .empty-state-icon svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .empty-state-text{font-size:13.5px;color:var(--text-2)}
@@ -271,8 +284,11 @@ input,button,textarea,select{font:inherit;color:inherit}
 /* ═══ Progress ════════════════════════════════════════════════════════════ */
 .progress-bar{
   position:fixed;top:0;left:0;height:2px;width:0;z-index:200;
-  background:linear-gradient(90deg,var(--brand),var(--brand-2));
-  box-shadow:0 0 12px var(--brand-ring);transition:width .25s ease;
+  background:linear-gradient(90deg,var(--brand),var(--brand-2),var(--brand));
+  background-size:200% 100%;
+  box-shadow:0 0 12px var(--brand-ring);
+  transition:width .25s cubic-bezier(.2,.8,.2,1);
+  animation:barFlow 1.2s linear infinite;
 }
 
 /* ═══ Toasts ══════════════════════════════════════════════════════════════ */
@@ -281,7 +297,7 @@ input,button,textarea,select{font:inherit;color:inherit}
   display:flex;align-items:center;gap:9px;max-width:min(88vw,380px);
   padding:11px 15px;border-radius:12px;font-size:12.5px;font-weight:600;
   background:var(--surface-2);border:1px solid var(--border-2);color:var(--text);
-  box-shadow:var(--shadow-2);animation:rise .22s ease both;
+  box-shadow:var(--shadow-2);animation:toastIn .28s cubic-bezier(.2,.85,.2,1) both;
 }
 .toast-dot{width:7px;height:7px;border-radius:99px;background:var(--brand);flex:0 0 auto}
 .toast.error{border-color:color-mix(in srgb,var(--danger) 45%,transparent)}
@@ -295,11 +311,11 @@ input,button,textarea,select{font:inherit;color:inherit}
   background:color-mix(in srgb,var(--bg) 72%,transparent);
   backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
 }
-.drop-overlay.active{display:flex}
+.drop-overlay.active{display:flex;animation:backdropIn .2s ease both}
 .drop-overlay-inner{
   display:flex;flex-direction:column;align-items:center;gap:12px;
   padding:44px 56px;border-radius:22px;border:2px dashed var(--brand);
-  background:var(--brand-soft);color:var(--brand);animation:rise .2s ease both;
+  background:var(--brand-soft);color:var(--brand);animation:dropPulse 1.7s ease-in-out infinite;
 }
 .drop-overlay-icon svg{width:38px;height:38px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .drop-overlay-text{font-size:15px;font-weight:700}
@@ -310,11 +326,11 @@ input,button,textarea,select{font:inherit;color:inherit}
   background:color-mix(in srgb,#000 48%,transparent);
   backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
 }
-.modal-backdrop.active{display:flex}
+.modal-backdrop.active{display:flex;animation:backdropIn .18s ease both}
 .modal{
   width:100%;max-width:760px;max-height:88vh;display:flex;flex-direction:column;
   background:var(--surface);border:1px solid var(--border-2);border-radius:18px;
-  box-shadow:var(--shadow-2);animation:rise .2s ease both;overflow:hidden;
+  box-shadow:var(--shadow-2);animation:popIn .26s cubic-bezier(.2,.85,.2,1) both;overflow:hidden;
 }
 .modal.sm{max-width:440px}
 .modal-header{
@@ -349,9 +365,11 @@ input,button,textarea,select{font:inherit;color:inherit}
 .btn{
   height:38px;padding:0 18px;border-radius:11px;cursor:pointer;
   background:var(--surface-2);border:1px solid var(--border);color:var(--text-2);
-  font-size:13px;font-weight:600;transition:all .16s;
+  font-size:13px;font-weight:600;
+  transition:transform .16s cubic-bezier(.2,.8,.2,1),background .16s,border-color .16s,color .16s;
 }
 .btn:hover{color:var(--text);border-color:var(--border-2);background:var(--surface-3)}
+.btn:active{transform:scale(.965)}
 .btn-primary{
   background:linear-gradient(140deg,var(--brand),var(--brand-2));
   border-color:transparent;color:var(--on-brand);box-shadow:0 4px 14px var(--brand-soft);
@@ -368,6 +386,7 @@ input,button,textarea,select{font:inherit;color:inherit}
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10px;font-weight:700;
   letter-spacing:.06em;text-transform:uppercase;
   color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);
+  animation:badgeIn .25s cubic-bezier(.2,.85,.2,1) both;
 }
 
 /* ═══ Footer ══════════════════════════════════════════════════════════════ */
@@ -418,6 +437,19 @@ input,button,textarea,select{font:inherit;color:inherit}
   .footer{flex-direction:column;gap:3px;text-align:center}
   .toast-container{right:12px;left:12px;bottom:12px}
   .toast{max-width:none}
+}
+
+/* ═══ Motion safety ═══════════════════════════════════════════════════════
+   Respect the OS "reduce motion" setting: keep the UI fully usable, just
+   without the decorative movement. */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;
+    scroll-behavior:auto !important;
+  }
+  .empty-state-icon{animation:none !important}
 }
 </style>
 </head>

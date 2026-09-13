@@ -41,8 +41,41 @@ body::before{
   content:'';position:fixed;inset:-30% -10% auto -10%;height:80vh;z-index:-1;pointer-events:none;
   background:radial-gradient(50% 55% at 22% 30%,var(--mesh-1),transparent 70%),
              radial-gradient(45% 50% at 78% 20%,var(--mesh-2),transparent 72%);
-  filter:blur(10px);
+  filter:blur(10px);animation:meshDrift 18s ease-in-out infinite alternate;
 }
+/* ===== Motion ===== */
+@keyframes heroIn{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:none}}
+@keyframes floatUp{from{opacity:0;transform:translateY(30px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes meshDrift{from{transform:translate3d(-1%,0,0) scale(1)}to{transform:translate3d(2%,3%,0) scale(1.08)}}
+@keyframes shine{to{background-position:200% center}}
+@keyframes sweep{from{transform:translateX(-140%)}to{transform:translateX(240%)}}
+@keyframes iconPop{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-3px) rotate(-5deg)}}
+
+.hero>*{animation:heroIn .85s cubic-bezier(.2,.8,.2,1) both}
+.hero>*:nth-child(2){animation-delay:.08s}
+.hero>*:nth-child(3){animation-delay:.16s}
+.hero>*:nth-child(4){animation-delay:.24s}
+.hero>*:nth-child(5){animation-delay:.34s}
+.preview{animation:floatUp .95s cubic-bezier(.2,.8,.2,1) both;animation-delay:.34s}
+.pv-row{animation:heroIn .5s cubic-bezier(.2,.8,.2,1) both}
+.pv-row:nth-child(2){animation-delay:.46s}
+.pv-row:nth-child(3){animation-delay:.53s}
+.pv-row:nth-child(4){animation-delay:.60s}
+.pv-row:nth-child(5){animation-delay:.67s}
+.pv-row:nth-child(6){animation-delay:.74s}
+.hero h1 em{background-size:220% auto;animation:shine 8s linear infinite}
+
+/* Scroll reveal: the whole section is observed and its children stagger in. */
+.section-head,.grid>.card,.steps>.step,.code{opacity:0;transform:translateY(26px);
+  transition:opacity .7s cubic-bezier(.2,.8,.2,1),transform .7s cubic-bezier(.2,.8,.2,1)}
+.section.in .section-head,.section.in .grid>.card,.section.in .steps>.step,.section.in .code{
+  opacity:1;transform:none}
+.section.in .grid>.card:nth-child(2),.section.in .steps>.step:nth-child(2){transition-delay:.07s}
+.section.in .grid>.card:nth-child(3),.section.in .steps>.step:nth-child(3){transition-delay:.14s}
+.section.in .grid>.card:nth-child(4){transition-delay:.05s}
+.section.in .grid>.card:nth-child(5){transition-delay:.12s}
+.section.in .grid>.card:nth-child(6){transition-delay:.19s}
+.section.in .code{transition-delay:.1s}
 a{color:inherit;text-decoration:none}
 code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 :focus-visible{outline:2px solid var(--brand);outline-offset:3px;border-radius:8px}
@@ -74,6 +107,13 @@ code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .btn-primary{background:linear-gradient(135deg,var(--brand),var(--brand-2));border-color:transparent;color:#fff;
   box-shadow:0 10px 30px var(--brand-soft)}
 .btn-primary:hover{box-shadow:0 14px 38px var(--brand-soft)}
+.btn-primary{position:relative;overflow:hidden}
+.btn-primary::after{
+  content:'';position:absolute;top:0;bottom:0;left:0;width:38%;pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.38),transparent);
+  transform:translateX(-140%);
+}
+.btn-primary:hover::after{animation:sweep .9s ease}
 .btn-sm{height:36px;padding:0 14px;font-size:13px;border-radius:11px}
 
 /* ===== Hero ===== */
@@ -126,7 +166,9 @@ code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
   transition:transform .2s,border-color .2s,box-shadow .2s}
 .card:hover{transform:translateY(-3px);border-color:var(--border-2);box-shadow:0 18px 40px rgba(0,0,0,.22)}
 .card .ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;margin-bottom:14px;
-  background:var(--brand-soft);color:var(--brand)}
+  background:var(--brand-soft);color:var(--brand);
+  transition:transform .3s cubic-bezier(.2,.8,.2,1),background .3s}
+.card:hover .ico{transform:translateY(-2px) rotate(-5deg);animation:iconPop 1.1s ease-in-out infinite}
 .card .ico svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .card h3{font-size:15px;margin-bottom:7px}
 .card p{font-size:13.5px;color:var(--text-2)}
@@ -142,6 +184,21 @@ code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .code .c{color:var(--text-3)}
 footer{border-top:1px solid var(--border);padding:34px 0;color:var(--text-3);font-size:13px}
 .foot-inner{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+footer a{position:relative}
+footer a::after{content:'';position:absolute;left:0;right:0;bottom:-2px;height:1px;background:currentColor;
+  transform:scaleX(0);transform-origin:left;transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+footer a:hover::after{transform:scaleX(1)}
+
+.nav{transition:box-shadow .3s ease,border-color .3s ease,background .3s ease}
+.nav.scrolled{box-shadow:0 10px 30px rgba(0,0,0,.26);border-bottom-color:var(--border-2)}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;scroll-behavior:auto !important}
+  .reveal{opacity:1;transform:none}
+  .hero>*,.preview,.pv-row{animation:none;opacity:1;transform:none}
+  .section-head,.grid>.card,.steps>.step,.code{opacity:1;transform:none}
+}
 
 @media(max-width:900px){
   .grid,.steps{grid-template-columns:1fr 1fr}
@@ -358,6 +415,26 @@ document.getElementById('themeBtn').addEventListener('click', function(){
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(){
   if (!localStorage.getItem('fb_theme')) applyTheme();
 });
+
+/* ===== Motion: nav shadow + scroll reveal ===== */
+var reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+var nav = document.querySelector('.nav');
+function onScroll(){ if (nav) nav.classList.toggle('scrolled', window.scrollY > 8); }
+window.addEventListener('scroll', onScroll, {passive:true});
+onScroll();
+
+var sections = document.querySelectorAll('.section');
+if (!reduceMotion && 'IntersectionObserver' in window) {
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      if (entry.isIntersecting) { entry.target.classList.add('in'); io.unobserve(entry.target); }
+    });
+  }, {threshold: 0.08, rootMargin: '0px 0px -6% 0px'});
+  sections.forEach(function(s){ io.observe(s); });
+} else {
+  sections.forEach(function(s){ s.classList.add('in'); });
+}
+
 applyTheme();
 applyLang();
 </script>
