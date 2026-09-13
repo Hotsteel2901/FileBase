@@ -106,7 +106,7 @@ The module provides a **persistent system-level install** with one‑tap control
 
 | Interface | How |
 |-----------|-----|
-| **Action button** | Tap "Action" in the root manager module list → runs `action.sh` with `start`/`stop`/`restart`/`status`/`log` |
+| **Action button** | Tap "Action" in the root manager module list → starts the server, or stops it if it is already running (`action.sh toggle`; `start`/`stop`/`restart`/`status`/`log` also work) |
 | **WebUI panel** | Open it from the KernelSU Manager module page (the manager renders `webroot/` in a WebView). On Magisk / APatch use [KSUWebUIStandalone](https://github.com/5ec1cff/KsuWebUIStandalone) or [MMRL](https://github.com/MMRLApp/MMRL) |
 | **Terminal** | `su -c 'sh /data/adb/modules/filebase/action.sh start'` |
 
@@ -116,11 +116,17 @@ The module provides a **persistent system-level install** with one‑tap control
 sh action.sh start          Start server (auto-detect hotspot, random IP, iptables)
 sh action.sh stop           Stop server + clean up alias IP + iptables
 sh action.sh restart        Stop then start
+sh action.sh toggle         Start if stopped, stop if running
 sh action.sh status         Show PID, bind IP, interface, log level, connectivity
 sh action.sh info           Machine-readable KEY=VALUE status (used by the WebUI)
 sh action.sh log [N]        Show last N log lines (default 50)
 sh action.sh loglevel [LVL] Read (no arg) or set the log level
 ```
+
+KernelSU runs the Action button as `ksud module action <id>` **without any
+arguments**, so the no-argument default is `toggle`: tapping Action starts the
+server when it is stopped and stops it when it is running. (It used to default
+to `status`, which is why the button only ever printed "Server STOPPED".)
 
 ### WebUI features
 

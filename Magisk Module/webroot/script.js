@@ -24,6 +24,7 @@ const HAS_API =
 /* ─── i18n ─────────────────────────────────────────────────────────────── */
 const I18N = {
   en: {
+    subtitle: 'Control panel',
     statusChecking: 'Checking…',
     statusRunning: 'Server running',
     statusStopped: 'Server stopped',
@@ -70,6 +71,7 @@ const I18N = {
     aboutLicense: 'License: MIT',
   },
   zh: {
+    subtitle: '控制面板',
     statusChecking: '检测中…',
     statusRunning: '服务器运行中',
     statusStopped: '服务器已停止',

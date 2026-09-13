@@ -106,7 +106,7 @@ python3 /data/local/tmp/server.py
 
 | 方式 | 操作 |
 |------|------|
-| **Action 按钮** | Root 管理器模块列表点"Action" → 执行 `action.sh`（start/stop/restart/status/log） |
+| **Action 按钮** | Root 管理器模块列表点"Action" → 未运行则启动、已运行则停止（即 `action.sh toggle`；也支持 start/stop/restart/status/log） |
 | **WebUI 面板** | 在 KernelSU 管理器模块页直接打开（管理器会用 WebView 渲染 `webroot/`）；Magisk / APatch 需 [KSUWebUIStandalone](https://github.com/5ec1cff/KsuWebUIStandalone) 或 [MMRL](https://github.com/MMRLApp/MMRL) |
 | **终端** | `su -c 'sh /data/adb/modules/filebase/action.sh start'` |
 
@@ -116,11 +116,16 @@ python3 /data/local/tmp/server.py
 sh action.sh start          启动服务器（自动检测热点、随机 IP、iptables）
 sh action.sh stop           停止服务器 + 清理 IP 别名 + iptables
 sh action.sh restart        重启
+sh action.sh toggle         未运行则启动，已运行则停止
 sh action.sh status         查看状态（PID、绑定 IP、网卡、日志级别、连通性）
 sh action.sh info           机器可读的 KEY=VALUE 状态（WebUI 使用）
 sh action.sh log [N]        查看最后 N 行日志（默认 50）
 sh action.sh loglevel [级别]  读取（不带参数）或设置日志级别
 ```
+
+KernelSU 执行 Action 按钮时用的是 `ksud module action <id>`，**不传任何参数**，
+因此无参数时的默认行为是 `toggle`：点了就启动（未运行时）或停止（运行中）。
+（此前默认是 `status`，所以按钮永远只显示 "Server STOPPED"。）
 
 ### WebUI 功能
 

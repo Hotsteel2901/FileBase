@@ -84,23 +84,64 @@ detect_root() {
 }
 
 # ── Get a PID by name ───────────────────────────────────────
-get_pid() {
-    # Exclude the current shell ($$) because the command line of this script
-    # itself contains the regex pattern and would otherwise match pgrep -f.
-    for pid in $(pgrep -f "python.*server\.py" 2>/dev/null); do
-        [ "$pid" -eq "$$" ] && continue
-        echo "$pid"
-        return 0
-    done
-    # Fallback: check PID file
-    if [ -f "$PID_FILE" ]; then
-        read p < "$PID_FILE"
-        if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then
-            echo "$p"
-            return 0
-        fi
-    fi
+# True when /proc/<pid> belongs to our server. Reading cmdline avoids matching
+# unrelated python processes (and does not depend on pgrep).
+# True only when /proc/<pid> is a python interpreter running THIS module's
+# server.py. Matching on "server.py" alone is too loose: any shell whose
+# command line merely mentions the path (or another module's server) would
+# otherwise be treated as ours.
+is_server_pid() {
+    [ -n "$1" ] || return 1
+    [ -r "/proc/$1/cmdline" ] || return 1
+    cmd=$(tr '\000' ' ' < "/proc/$1/cmdline" 2>/dev/null)
+    case "$cmd" in
+        *"$SERVER_PY"*) ;;
+        *) return 1 ;;
+    esac
+    case "$cmd" in
+        *python*) return 0 ;;
+    esac
     return 1
+}
+
+# Candidate PIDs: the server's own pid file, then pgrep (toybox / busybox),
+# then a raw /proc scan when pgrep is unavailable.
+pid_candidates() {
+    if [ -r "$PID_FILE" ]; then
+        p=""
+        read p < "$PID_FILE" 2>/dev/null || true
+        case "$p" in
+            ''|*[!0-9]*) ;;
+            *) printf '%s\n' "$p" ;;
+        esac
+    fi
+    if command -v pgrep >/dev/null 2>&1; then
+        pgrep -f "server\.py" 2>/dev/null
+    else
+        for d in /proc/[0-9]*; do
+            printf '%s\n' "${d#/proc/}"
+        done
+    fi
+}
+
+# Every PID belonging to this module's server, de-duplicated.
+list_server_pids() {
+    seen=" "
+    for p in $(pid_candidates); do
+        [ "$p" = "$$" ] && continue
+        is_server_pid "$p" || continue
+        case "$seen" in
+            *" $p "*) continue ;;
+        esac
+        seen="$seen$p "
+        printf '%s\n' "$p"
+    done
+}
+
+get_pid() {
+    p=$(list_server_pids | head -n 1)
+    [ -n "$p" ] || return 1
+    printf '%s' "$p"
 }
 
 # ── Connectivity probe ──────────────────────────────────────
@@ -219,14 +260,12 @@ do_start() {
     print_info "Starting server..."
 
     # Kill any existing server first (avoid port conflicts / stale aliases)
-    for oldpid in $(pgrep -f "python.*server\.py" 2>/dev/null); do
-        [ "$oldpid" -eq "$$" ] && continue
+    for oldpid in $(list_server_pids); do
         print_info "Killing existing server (PID $oldpid)..."
         kill "$oldpid" 2>/dev/null || true
     done
     sleep 1
-    for oldpid in $(pgrep -f "python.*server\.py" 2>/dev/null); do
-        [ "$oldpid" -eq "$$" ] && continue
+    for oldpid in $(list_server_pids); do
         kill -9 "$oldpid" 2>/dev/null || true
     done
 
@@ -380,9 +419,8 @@ do_stop() {
     echo ""
 
     stopped=0
-    # Kill by name (exclude current shell to avoid self-matching)
-    for pid in $(pgrep -f "python.*server\.py" 2>/dev/null); do
-        [ "$pid" -eq "$$" ] && continue
+    # Kill this module's server (strict match, see is_server_pid)
+    for pid in $(list_server_pids); do
         print_info "Killing PID $pid..."
         kill "$pid" 2>/dev/null || true
         stopped=1
@@ -390,8 +428,7 @@ do_stop() {
     sleep 1
 
     # Force kill lingering
-    for pid in $(pgrep -f "python.*server\.py" 2>/dev/null); do
-        [ "$pid" -eq "$$" ] && continue
+    for pid in $(list_server_pids); do
         kill -9 "$pid" 2>/dev/null || true
     done
 
@@ -417,8 +454,7 @@ do_stop() {
 
     # Verify no real server remains (exclude current shell to avoid self-matching)
     has_server=0
-    for p in $(pgrep -f "python.*server\.py" 2>/dev/null); do
-        [ "$p" -eq "$$" ] && continue
+    for p in $(list_server_pids); do
         has_server=1
         break
     done
@@ -529,18 +565,35 @@ do_loglevel() {
     fi
 }
 
+# ── Toggle — the manager's Action button ────────────────────
+# KernelSU runs `ksud module action <id>` with NO arguments, so the Action
+# button has to do something useful by itself: start when stopped, stop when
+# running. (The previous default was `status`, which is why the button only
+# ever reported "Server STOPPED".)
+do_toggle() {
+    if get_pid >/dev/null 2>&1; then
+        do_stop
+    else
+        do_start
+    fi
+}
+
 # ── Command table ───────────────────────────────────────────
 run_command() {
-    case "$1" in
+    cmd="$1"
+    # No argument (the manager's Action button) means "toggle".
+    [ -z "$cmd" ] && cmd="toggle"
+    case "$cmd" in
         start)    do_start ;;
         stop)     do_stop ;;
         restart)  do_restart ;;
+        toggle)   do_toggle ;;
         status)   do_status ;;
         info)     do_info ;;
         log)      do_log "${2:-50}" ;;
         loglevel) do_loglevel "$2" ;;
         *)
-            echo "Usage: action.sh {start|stop|restart|status|info|log [lines]|loglevel [level]}"
+            echo "Usage: action.sh {start|stop|restart|toggle|status|info|log [lines]|loglevel [level]}"
             echo ""
             do_status
             ;;
@@ -555,11 +608,12 @@ fi
 
 mkdir -p "${MODPATH}/logs" 2>/dev/null
 
-CMD="${1:-status}"
+CMD="$1"
+[ -z "$CMD" ] && CMD="toggle"
 
 if [ "$CMD" = "info" ]; then
     # Pure machine-readable output: no persistence, no decoration.
-    run_command "$@"
+    run_command "$CMD" "$2"
     exit $?
 fi
 
@@ -568,7 +622,7 @@ fi
 # come back empty or truncated when the command backgrounds a process; the file
 # on disk is the reliable copy and the WebUI reads it back.
 TMP_OUT="${MODPATH}/logs/.action.tmp"
-run_command "$@" > "$TMP_OUT" 2>&1
+run_command "$CMD" "$2" > "$TMP_OUT" 2>&1
 rc=$?
 cat "$TMP_OUT" 2>/dev/null
 if [ -s "$TMP_OUT" ]; then

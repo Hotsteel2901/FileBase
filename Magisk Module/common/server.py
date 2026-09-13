@@ -66,425 +66,452 @@ INDEX_HTML = r"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
 <title>FileBase</title>
-<!-- No external webfonts: the server usually runs on an offline hotspot LAN. -->
 <style>
-/* ═══ RESET ═══ */
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-
-/* ═══ THEME VARIABLES ═══ */
+/* ═══ Design tokens ═══════════════════════════════════════════════════════ */
 [data-theme="dark"]{
-  --bg:#0c0c0c;--surface:#151515;--surface-2:#1e1e1e;--surface-3:#262626;
-  --border:#2a2a2a;--border-hi:#3a3a3a;
-  --text:#e4e4e4;--text-dim:#707070;--text-muted:#4a4a4a;
-  --accent:#d4943a;--accent-bright:#e8a838;--accent-dim:rgba(212,148,58,.12);
-  --danger:#d94040;--danger-dim:rgba(217,64,64,.12);
-  --success:#3da060;--success-dim:rgba(61,160,96,.12);
-  --glow:0 0 20px rgba(212,148,58,.15);
-  --dot:rgba(255,255,255,.025);
-  --shadow:0 4px 24px rgba(0,0,0,.6);
-  --scrollbar-thumb:#333;--scrollbar-track:transparent;
+  --bg:#0a0b0f;--bg-grad:radial-gradient(1200px 600px at 12% -10%,rgba(59,130,246,.10),transparent 60%);
+  --surface:#12141a;--surface-2:#171a21;--surface-3:#1e222b;
+  --border:rgba(255,255,255,.07);--border-2:rgba(255,255,255,.13);
+  --text:#e9edf5;--text-2:#98a2b3;--text-3:#5c6675;
+  --brand:#3b82f6;--brand-2:#60a5fa;--brand-soft:rgba(59,130,246,.14);--brand-ring:rgba(59,130,246,.45);
+  --on-brand:#0b1220;
+  --ok:#34d399;--warn:#fbbf24;--danger:#f87171;
+  --danger-soft:rgba(248,113,113,.13);--ok-soft:rgba(52,211,153,.13);
+  --shadow-1:0 1px 2px rgba(0,0,0,.4);--shadow-2:0 12px 32px rgba(0,0,0,.55);
+  --scroll:#2b313c;
 }
 [data-theme="light"]{
-  --bg:#f4f2ed;--surface:#ffffff;--surface-2:#faf8f4;--surface-3:#f0ede6;
-  --border:#ddd9d2;--border-hi:#c8c4bc;
-  --text:#1a1a1a;--text-dim:#888880;--text-muted:#b0aca4;
-  --accent:#b87a20;--accent-bright:#d4943a;--accent-dim:rgba(184,122,32,.1);
-  --danger:#c03030;--danger-dim:rgba(192,48,48,.08);
-  --success:#2d8a4a;--success-dim:rgba(45,138,74,.1);
-  --glow:0 2px 12px rgba(184,122,32,.1);
-  --dot:rgba(0,0,0,.03);
-  --shadow:0 4px 24px rgba(0,0,0,.08);
-  --scrollbar-thumb:#ccc;--scrollbar-track:transparent;
+  --bg:#f6f7f9;--bg-grad:radial-gradient(1200px 600px at 12% -10%,rgba(37,99,235,.08),transparent 60%);
+  --surface:#ffffff;--surface-2:#f8fafc;--surface-3:#f1f4f8;
+  --border:rgba(16,24,40,.08);--border-2:rgba(16,24,40,.15);
+  --text:#101828;--text-2:#5b6675;--text-3:#98a2b3;
+  --brand:#2563eb;--brand-2:#3b82f6;--brand-soft:rgba(37,99,235,.10);--brand-ring:rgba(37,99,235,.35);
+  --on-brand:#ffffff;
+  --ok:#059669;--warn:#b45309;--danger:#dc2626;
+  --danger-soft:rgba(220,38,38,.09);--ok-soft:rgba(5,150,105,.10);
+  --shadow-1:0 1px 2px rgba(16,24,40,.06);--shadow-2:0 16px 40px rgba(16,24,40,.14);
+  --scroll:#cbd5e1;
 }
 
-/* ═══ BASE ═══ */
-html{font-size:15px;-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+/* ═══ Base ════════════════════════════════════════════════════════════════ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:15px;-webkit-text-size-adjust:100%}
 body{
-  font-family:'Figtree',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
-  background:var(--bg);color:var(--text);min-height:100vh;
-  display:flex;flex-direction:column;
-  background-image:radial-gradient(var(--dot) 1px,transparent 1px);
-  background-size:20px 20px;
-  animation:fadeIn .4s ease;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  background:var(--bg);background-image:var(--bg-grad);background-attachment:fixed;
+  color:var(--text);min-height:100vh;display:flex;flex-direction:column;
+  -webkit-font-smoothing:antialiased;animation:fade .3s ease;
 }
-::-webkit-scrollbar{width:6px}
-::-webkit-scrollbar-track{background:var(--scrollbar-track)}
-::-webkit-scrollbar-thumb{background:var(--scrollbar-thumb);border-radius:3px}
-::selection{background:var(--accent-dim);color:var(--accent-bright)}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:99px;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}
+::selection{background:var(--brand-soft);color:var(--text)}
 a{color:inherit}
-input,button,textarea{font-family:inherit;font-size:inherit}
+input,button,textarea,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--brand-ring);outline-offset:2px;border-radius:6px}
 
-@keyframes fadeIn{from{opacity:0}to{opacity:1}}
-@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
 
-/* ═══ HEADER ═══ */
+/* ═══ Top bar ═════════════════════════════════════════════════════════════ */
 .topbar{
-  background:var(--surface);border-bottom:1px solid var(--border);
-  padding:0 20px;display:flex;align-items:center;height:52px;
-  position:sticky;top:0;z-index:100;gap:16px;
+  position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:14px;
+  height:56px;padding:0 18px;
+  background:color-mix(in srgb,var(--surface) 86%,transparent);
+  backdrop-filter:saturate(180%) blur(14px);-webkit-backdrop-filter:saturate(180%) blur(14px);
+  border-bottom:1px solid var(--border);
 }
-.brand{
-  font-family:'Bebas Neue','Arial Narrow',Impact,'Arial Black',sans-serif;
-  font-size:22px;letter-spacing:3px;color:var(--accent);
-  display:flex;align-items:center;gap:10px;flex-shrink:0;
-  user-select:none;
+.brand{display:flex;align-items:center;gap:9px;flex:0 0 auto;user-select:none}
+.brand-logo{
+  width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
+  background:linear-gradient(140deg,var(--brand),var(--brand-2));
+  box-shadow:0 4px 12px var(--brand-soft);
 }
-.brand-dot{
-  width:8px;height:8px;border-radius:50%;background:var(--accent);
-  animation:pulse 2s ease infinite;
-  box-shadow:0 0 6px var(--accent);
+.brand-logo svg{width:15px;height:15px;stroke:#fff;fill:none;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round}
+.brand-text{
+  font-size:14px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  background:linear-gradient(90deg,var(--text),var(--text-2));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
 }
 .breadcrumb{
-  flex:1;display:flex;align-items:center;gap:2px;
-  font-size:13px;min-width:0;overflow-x:auto;
-  scrollbar-width:none;
+  flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:1px;
+  overflow-x:auto;scrollbar-width:none;font-size:13px;
 }
 .breadcrumb::-webkit-scrollbar{display:none}
-.bc-sep{color:var(--text-muted);padding:0 2px;user-select:none;font-size:11px}
-.bc-link{
-  color:var(--text-dim);cursor:pointer;padding:4px 8px;border-radius:2px;
-  white-space:nowrap;transition:color .15s,background .15s;
+.bc-root{display:inline-flex;align-items:center}
+.bc-root svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.bc-root,.bc-link{
+  padding:5px 8px;border-radius:8px;color:var(--text-2);white-space:nowrap;
+  cursor:pointer;transition:background .15s,color .15s;
 }
-.bc-link:hover{color:var(--text);background:var(--accent-dim)}
-.bc-link.current{color:var(--accent);font-weight:600;cursor:default}
+.bc-root:hover,.bc-link:hover{color:var(--text);background:var(--surface-3)}
+.bc-link.current{color:var(--text);font-weight:600;cursor:default}
 .bc-link.current:hover{background:transparent}
-.bc-root{color:var(--text-dim);cursor:pointer;padding:4px 6px;border-radius:2px}
-.bc-root:hover{color:var(--text);background:var(--accent-dim)}
-.controls{display:flex;align-items:center;gap:6px;flex-shrink:0}
-.ctrl-btn{
-  background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);
-  padding:5px 12px;border-radius:2px;cursor:pointer;font-size:12px;font-weight:600;
-  transition:all .15s;display:flex;align-items:center;gap:5px;user-select:none;
-}
-.ctrl-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-dim);transform:translateY(-1px)}
-.ctrl-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+.bc-sep{color:var(--text-3);font-size:11px;padding:0 1px;user-select:none}
+.controls{display:flex;align-items:center;gap:7px;flex:0 0 auto}
 
-/* ═══ TOOLBAR ═══ */
+/* ═══ Buttons ═════════════════════════════════════════════════════════════ */
+.ctrl-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:34px;padding:0 12px;border-radius:10px;cursor:pointer;user-select:none;
+  background:var(--surface-2);border:1px solid var(--border);color:var(--text-2);
+  font-size:12.5px;font-weight:600;
+  transition:background .16s,border-color .16s,color .16s,transform .16s;
+}
+.ctrl-btn:hover{color:var(--text);border-color:var(--border-2);background:var(--surface-3);transform:translateY(-1px)}
+.ctrl-btn:active{transform:translateY(0) scale(.98)}
+.ctrl-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.ctrl-btn.icon-only{width:34px;padding:0}
+.ctrl-btn.lang-btn{min-width:44px}
+.ctrl-btn.admin-btn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent)}
+.ctrl-btn.admin-btn:hover{background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn)}
+.ctrl-btn.on{color:var(--brand);border-color:color-mix(in srgb,var(--brand) 45%,transparent);background:var(--brand-soft)}
+
+/* ═══ Toolbar ═════════════════════════════════════════════════════════════ */
 .toolbar{
-  background:var(--surface);border-bottom:1px solid var(--border);
-  padding:8px 20px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+  padding:10px 18px;background:var(--surface);border-bottom:1px solid var(--border);
 }
 .tool-btn{
-  background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);
-  padding:6px 14px;border-radius:2px;cursor:pointer;font-size:12px;font-weight:500;
-  transition:all .15s;display:inline-flex;align-items:center;gap:6px;
-  white-space:nowrap;user-select:none;
+  display:inline-flex;align-items:center;gap:7px;
+  height:34px;padding:0 13px;border-radius:10px;cursor:pointer;user-select:none;white-space:nowrap;
+  background:var(--surface-2);border:1px solid var(--border);color:var(--text-2);
+  font-size:12.5px;font-weight:600;
+  transition:background .16s,border-color .16s,color .16s,transform .16s;
 }
-.tool-btn:hover{color:var(--text);border-color:var(--border-hi);background:var(--surface-3);transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,0.1)}
-.tool-btn{transition:all .2s}
-.tool-btn:active{transform:scale(.97)}
-.tool-btn.primary{background:var(--accent-dim);color:var(--accent);border-color:var(--accent)}
-.tool-btn.primary:hover{background:var(--accent);color:#0c0c0c}
-.tool-btn.danger:hover{color:var(--danger);border-color:var(--danger);background:var(--danger-dim)}
+.tool-btn:hover{color:var(--text);border-color:var(--border-2);background:var(--surface-3);transform:translateY(-1px)}
+.tool-btn:active{transform:translateY(0) scale(.98)}
+.tool-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.tool-btn.primary{
+  background:linear-gradient(140deg,var(--brand),var(--brand-2));
+  border-color:transparent;color:var(--on-brand);
+  box-shadow:0 4px 14px var(--brand-soft);
+}
+.tool-btn.primary:hover{color:var(--on-brand);filter:brightness(1.06)}
+.tool-btn.danger:hover{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 45%,transparent);background:var(--danger-soft)}
 .search-box{
-  margin-left:auto;background:var(--surface-2);border:1px solid var(--border);
-  color:var(--text);padding:6px 12px;border-radius:2px;font-size:12px;width:180px;
-  transition:border-color .15s;
+  margin-left:auto;height:34px;padding:0 13px;border-radius:10px;width:210px;
+  background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+  font-size:12.5px;transition:border-color .16s,box-shadow .16s;
 }
-.search-box:focus{outline:none;border-color:var(--accent)}
-.search-box::placeholder{color:var(--text-muted)}
+.search-box::placeholder{color:var(--text-3)}
+.search-box:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
 
-/* ═══ STATUS BAR ═══ */
+/* ═══ Status bar ══════════════════════════════════════════════════════════ */
 .statusbar{
-  padding:6px 20px;font-size:11px;color:var(--text-muted);
-  display:flex;align-items:center;gap:12px;
-  font-family:'JetBrains Mono','Courier New',monospace;
-  border-bottom:1px solid var(--border);background:var(--surface);
+  display:flex;align-items:center;gap:16px;padding:7px 18px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;color:var(--text-3);
+  background:var(--surface);border-bottom:1px solid var(--border);
 }
-.statusbar .stat{display:flex;align-items:center;gap:4px}
-.statusbar .dot{width:4px;height:4px;border-radius:50%;background:var(--accent)}
+.statusbar .stat{display:flex;align-items:center;gap:6px}
+.statusbar .dot{width:6px;height:6px;border-radius:99px;background:var(--brand)}
 
-/* ═══ FILE LIST ═══ */
-.content{flex:1;padding:0}
-.file-table{width:100%;border-collapse:collapse}
+/* ═══ Content / table ═════════════════════════════════════════════════════ */
+.content{flex:1 1 auto;display:flex;flex-direction:column;min-width:0}
+.file-table{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0}
+/* Fixed layout keeps long names ellipsised instead of pushing the actions
+   column off-screen on narrow phones. */
+.file-col-name{width:auto}
+.file-col-size{width:122px}
+.file-col-date{width:172px}
+.file-table th:last-child,.file-table td:last-child{width:310px}
 .file-table thead th{
-  text-align:left;padding:10px 16px;font-size:11px;font-weight:600;
-  text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);
-  border-bottom:1px solid var(--border);cursor:pointer;user-select:none;
-  position:sticky;top:0;background:var(--surface);z-index:5;
-  transition:color .15s;
+  position:sticky;top:0;z-index:20;text-align:left;
+  padding:11px 18px;font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--text-3);background:var(--bg);border-bottom:1px solid var(--border);
+  cursor:pointer;user-select:none;white-space:nowrap;transition:color .15s;
 }
-.file-table thead th:hover{color:var(--text-dim)}
-.file-table thead th.sorted{color:var(--accent)}
-.file-table thead th .sort-arrow{margin-left:4px;font-size:10px;opacity:.5}
-.file-table thead th.sorted .sort-arrow{opacity:1;color:var(--accent)}
-.file-row{transition:all .2s;
-  border-bottom:1px solid var(--border);transition:background .12s;
-  animation:slideUp .25s ease both;
-}
-.file-row:hover{background:var(--surface-2);transform:translateX(2px)}
-.file-row td{padding:8px 16px;vertical-align:middle}
-.file-name{display:flex;align-items:center;gap:10px;min-width:0}
+.file-table thead th:hover{color:var(--text-2)}
+.file-table thead th.sorted{color:var(--brand)}
+.sort-arrow{margin-left:5px;font-size:9px;opacity:.45}
+.file-table thead th.sorted .sort-arrow{opacity:1;color:var(--brand)}
+.file-row{border-bottom:1px solid var(--border);animation:rise .22s ease both}
+.file-row:hover{background:color-mix(in srgb,var(--brand) 5%,var(--surface))}
+.file-row td{padding:9px 18px;vertical-align:middle;overflow:hidden}
+.file-name{display:flex;align-items:center;gap:11px;min-width:0}
 .file-icon{
-  width:28px;height:28px;border-radius:2px;
-  display:flex;align-items:center;justify-content:center;
-  font-size:13px;flex-shrink:0;
-  background:var(--surface-3);color:var(--text-dim);
-  font-family:'JetBrains Mono','Courier New',monospace;
-  font-weight:500;
+  width:30px;height:30px;border-radius:9px;flex:0 0 auto;display:grid;place-items:center;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10.5px;font-weight:700;
+  background:var(--surface-3);color:var(--text-2);
+  border:1px solid var(--border);letter-spacing:.02em;
 }
-.file-icon.folder{color:var(--accent);background:var(--accent-dim)}
-.file-name-text{
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font-size:13px;font-weight:500;
+.file-icon.folder{
+  color:var(--brand);background:var(--brand-soft);
+  border-color:color-mix(in srgb,var(--brand) 30%,transparent);
 }
+.file-name-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px}
 .file-name-link{color:var(--text);text-decoration:none;cursor:pointer;transition:color .15s}
-.file-name-link:hover{color:var(--accent)}
-.file-meta{
-  font-family:'JetBrains Mono','Courier New',monospace;
-  font-size:11px;color:var(--text-dim);white-space:nowrap;
-}
-.file-actions{white-space:nowrap;display:flex;gap:4px}
+.file-name-link:hover{color:var(--brand)}
+.file-meta{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;color:var(--text-2);white-space:nowrap}
+.file-actions{white-space:nowrap;text-align:right}
 .file-act-btn{
-  background:transparent;border:1px solid transparent;color:var(--text-muted);
-  padding:3px 8px;border-radius:2px;cursor:pointer;font-size:11px;
+  display:inline-flex;align-items:center;height:26px;padding:0 9px;margin-left:4px;
+  border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;
+  background:transparent;border:1px solid transparent;color:var(--text-3);
   transition:all .15s;
 }
-.file-act-btn:hover{color:var(--text);border-color:var(--border);background:var(--surface-3)}
-.file-act-btn.del:hover{color:var(--danger);border-color:var(--danger);background:var(--danger-dim)}
+.file-act-btn:hover{color:var(--text);background:var(--surface-3);border-color:var(--border)}
+.file-act-btn.del:hover{color:var(--danger);background:var(--danger-soft);border-color:color-mix(in srgb,var(--danger) 40%,transparent)}
 
-/* ═══ EMPTY STATE ═══ */
-.empty-state{
-  text-align:center;padding:80px 20px;color:var(--text-muted);
+/* ═══ Empty state ═════════════════════════════════════════════════════════ */
+.empty-state{flex:1 1 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:72px 24px;text-align:center}
+.empty-state-icon{
+  width:56px;height:56px;border-radius:18px;display:grid;place-items:center;
+  background:var(--surface-2);border:1px solid var(--border);color:var(--text-3);
 }
-.empty-state-icon{font-size:48px;margin-bottom:12px;opacity:.3}
-.empty-state-text{font-size:14px;font-weight:500}
+.empty-state-icon svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.empty-state-text{font-size:13.5px;color:var(--text-2)}
 
-/* ═══ PROGRESS ═══ */
+/* ═══ Progress ════════════════════════════════════════════════════════════ */
 .progress-bar{
-  position:fixed;top:0;left:0;height:2px;background:var(--accent);z-index:200;
-  transition:width .2s ease;width:0;
-  box-shadow:0 0 8px var(--accent);
+  position:fixed;top:0;left:0;height:2px;width:0;z-index:200;
+  background:linear-gradient(90deg,var(--brand),var(--brand-2));
+  box-shadow:0 0 12px var(--brand-ring);transition:width .25s ease;
 }
 
-/* ═══ TOAST ═══ */
-.toast-container{position:fixed;bottom:20px;right:20px;z-index:300;display:flex;flex-direction:column;gap:8px}
+/* ═══ Toasts ══════════════════════════════════════════════════════════════ */
+.toast-container{position:fixed;right:18px;bottom:18px;z-index:300;display:flex;flex-direction:column;gap:9px;pointer-events:none}
 .toast{
-  background:var(--surface-2);border:1px solid var(--border);color:var(--text);
-  padding:10px 18px;border-radius:3px;font-size:12px;font-weight:500;
-  box-shadow:var(--shadow);animation:slideUp .25s ease;
-  display:flex;align-items:center;gap:8px;max-width:320px;
+  display:flex;align-items:center;gap:9px;max-width:min(88vw,380px);
+  padding:11px 15px;border-radius:12px;font-size:12.5px;font-weight:600;
+  background:var(--surface-2);border:1px solid var(--border-2);color:var(--text);
+  box-shadow:var(--shadow-2);animation:rise .22s ease both;
 }
-.toast.error{border-color:var(--danger);color:var(--danger)}
-.toast.success{border-color:var(--success);color:var(--success)}
-.toast-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.toast-dot{width:7px;height:7px;border-radius:99px;background:var(--brand);flex:0 0 auto}
+.toast.error{border-color:color-mix(in srgb,var(--danger) 45%,transparent)}
 .toast.error .toast-dot{background:var(--danger)}
-.toast.success .toast-dot{background:var(--success)}
-.toast.info .toast-dot{background:var(--accent)}
+.toast.success{border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
+.toast.success .toast-dot{background:var(--ok)}
 
-/* ═══ DROP OVERLAY ═══ */
+/* ═══ Drop overlay ════════════════════════════════════════════════════════ */
 .drop-overlay{
-  position:fixed;inset:0;background:var(--accent-dim);
-  border:2px dashed var(--accent);z-index:150;display:none;
-  justify-content:center;align-items:center;
-  backdrop-filter:blur(2px);
+  position:fixed;inset:0;z-index:150;display:none;align-items:center;justify-content:center;
+  background:color-mix(in srgb,var(--bg) 72%,transparent);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
 }
 .drop-overlay.active{display:flex}
 .drop-overlay-inner{
-  text-align:center;color:var(--accent);
+  display:flex;flex-direction:column;align-items:center;gap:12px;
+  padding:44px 56px;border-radius:22px;border:2px dashed var(--brand);
+  background:var(--brand-soft);color:var(--brand);animation:rise .2s ease both;
 }
-.drop-overlay-icon{font-size:48px;margin-bottom:8px}
-.drop-overlay-text{font-size:16px;font-weight:600}
+.drop-overlay-icon svg{width:38px;height:38px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.drop-overlay-text{font-size:15px;font-weight:700}
 
-/* ═══ MODAL ═══ */
+/* ═══ Modals ══════════════════════════════════════════════════════════════ */
 .modal-backdrop{
-  position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;
-  display:none;justify-content:center;align-items:center;
-  backdrop-filter:blur(3px);
+  position:fixed;inset:0;z-index:250;display:none;align-items:center;justify-content:center;padding:18px;
+  background:color-mix(in srgb,#000 48%,transparent);
+  backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
 }
 .modal-backdrop.active{display:flex}
 .modal{
-  background:var(--surface);border:1px solid var(--border);border-radius:4px;
-  width:92%;max-width:700px;max-height:85vh;display:flex;flex-direction:column;
-  box-shadow:var(--shadow);animation:slideUp .2s ease;
+  width:100%;max-width:760px;max-height:88vh;display:flex;flex-direction:column;
+  background:var(--surface);border:1px solid var(--border-2);border-radius:18px;
+  box-shadow:var(--shadow-2);animation:rise .2s ease both;overflow:hidden;
 }
-.modal.sm{max-width:420px}
+.modal.sm{max-width:440px}
 .modal-header{
-  padding:16px 20px;border-bottom:1px solid var(--border);
-  display:flex;align-items:center;justify-content:space-between;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:15px 18px;border-bottom:1px solid var(--border);
 }
-.modal-title{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px}
-.modal-title .accent{color:var(--accent)}
+.modal-title{display:flex;align-items:center;gap:9px;font-size:14.5px;font-weight:700}
+.modal-title .accent{color:var(--brand)}
 .modal-close{
-  background:transparent;border:none;color:var(--text-dim);cursor:pointer;
-  padding:4px 8px;border-radius:2px;font-size:18px;line-height:1;
-  transition:color .15s;
+  width:30px;height:30px;border-radius:9px;display:grid;place-items:center;cursor:pointer;
+  background:transparent;border:1px solid transparent;color:var(--text-3);font-size:17px;line-height:1;
+  transition:all .15s;
 }
-.modal-close:hover{color:var(--text)}
-.modal-body{padding:16px 20px;flex:1;overflow-y:auto}
-.modal-footer{
-  padding:12px 20px;border-top:1px solid var(--border);
-  display:flex;gap:8px;justify-content:flex-end;
-}
+.modal-close:hover{color:var(--text);background:var(--surface-3);border-color:var(--border)}
+.modal-body{padding:18px;overflow-y:auto;flex:1 1 auto}
+.modal-footer{display:flex;justify-content:flex-end;gap:9px;padding:14px 18px;border-top:1px solid var(--border)}
 .modal textarea{
-  width:100%;min-height:350px;background:var(--bg);color:var(--text);
-  border:1px solid var(--border);border-radius:2px;padding:14px;
-  font-family:'JetBrains Mono','Courier New',monospace;font-size:12px;
-  resize:vertical;line-height:1.6;transition:border-color .15s;
+  width:100%;min-height:340px;padding:14px;border-radius:12px;resize:vertical;
+  background:var(--bg);border:1px solid var(--border);color:var(--text);
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.65;
+  transition:border-color .16s,box-shadow .16s;
 }
-.modal textarea:focus{outline:none;border-color:var(--accent)}
-.modal input[type=text]{
-  width:100%;background:var(--bg);color:var(--text);
-  border:1px solid var(--border);border-radius:2px;padding:10px 14px;
-  font-size:14px;transition:border-color .15s;
+.modal textarea:focus,.modal input[type=text]:focus,.login-input:focus{
+  outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft);
 }
-.modal input[type=text]:focus{outline:none;border-color:var(--accent)}
-.modal input[type=text]::placeholder{color:var(--text-muted)}
+.modal input[type=text],.login-input{
+  width:100%;height:42px;padding:0 14px;border-radius:12px;
+  background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:14px;
+  transition:border-color .16s,box-shadow .16s;
+}
+.modal input::placeholder,.login-input::placeholder{color:var(--text-3)}
 .btn{
-  padding:8px 20px;border-radius:2px;border:1px solid var(--border);
-  cursor:pointer;font-size:12px;font-weight:500;transition:all .15s;
-  background:var(--surface-2);color:var(--text-dim);
+  height:38px;padding:0 18px;border-radius:11px;cursor:pointer;
+  background:var(--surface-2);border:1px solid var(--border);color:var(--text-2);
+  font-size:13px;font-weight:600;transition:all .16s;
 }
-.btn:hover{color:var(--text);border-color:var(--border-hi)}
-.btn-primary{background:var(--accent);color:#0c0c0c;border-color:var(--accent);font-weight:600}
-.btn-primary:hover{background:var(--accent-bright)}
+.btn:hover{color:var(--text);border-color:var(--border-2);background:var(--surface-3)}
+.btn-primary{
+  background:linear-gradient(140deg,var(--brand),var(--brand-2));
+  border-color:transparent;color:var(--on-brand);box-shadow:0 4px 14px var(--brand-soft);
+}
+.btn-primary:hover{color:var(--on-brand);filter:brightness(1.06)}
+.btn-danger{background:var(--danger);border-color:transparent;color:#fff}
+.btn-danger:hover{background:var(--danger);filter:brightness(1.06);color:#fff}
+.btn-ghost{background:transparent}
+.login-error{min-height:18px;margin-top:8px;font-size:12px;color:var(--danger)}
 
-/* ═══ FOOTER ═══ */
+/* ═══ Badge ═══════════════════════════════════════════════════════════════ */
+.admin-badge{
+  display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;
+  color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);
+}
+
+/* ═══ Footer ══════════════════════════════════════════════════════════════ */
 .footer{
-  padding:8px 20px;font-size:10px;color:var(--text-muted);
-  display:flex;align-items:center;justify-content:space-between;
-  border-top:1px solid var(--border);background:var(--surface);
-  font-family:'JetBrains Mono','Courier New',monospace;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:9px 18px;border-top:1px solid var(--border);background:var(--surface);
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10.5px;color:var(--text-3);
 }
 .footer-id{display:flex;align-items:center;gap:6px}
-.footer-id span{color:var(--text-dim)}
+.footer-id span:last-child{color:var(--text-2)}
 
-/* ═══ RESPONSIVE ═══ */
-@media(max-width:700px){
-  .topbar{padding:0 12px;gap:10px;height:48px}
-  .brand{font-size:18px;letter-spacing:2px}
-  .brand-text{display:none}
-  .toolbar{padding:6px 12px;gap:4px}
-  .tool-btn{padding:5px 10px;font-size:11px}
-  .search-box{width:120px;margin-left:0}
-  .content{padding:0}
-  .file-table thead th{padding:8px 10px;font-size:10px}
-  .file-row td{padding:6px 10px}
-  .file-icon{width:24px;height:24px;font-size:11px}
-  .file-name-text{font-size:12px}
-  .file-meta{font-size:10px}
-  .file-act-btn{padding:2px 6px;font-size:10px}
-  .file-col-size,.file-col-date{display:none}
-  .statusbar{padding:4px 12px;font-size:10px}
-  .footer{flex-direction:column;gap:4px;text-align:center}
-  .modal{width:96%;max-height:90vh}
-  .modal textarea{min-height:250px}
-}
-
-/* ═══ LOADING SHIMMER ═══ */
-.loading .file-row{transition:all .2s;
+/* ═══ Loading skeleton ════════════════════════════════════════════════════ */
+.loading .file-row{
   background:linear-gradient(90deg,var(--surface) 25%,var(--surface-2) 50%,var(--surface) 75%);
-  background-size:200% 100%;
-  animation:shimmer 1.5s infinite;
-  height:40px;
+  background-size:200% 100%;animation:shimmer 1.4s infinite;height:48px;border:0;
 }
 
-/* ═══ ADMIN ═══ */
-.admin-badge{
-  display:inline-flex;align-items:center;gap:4px;
-  background:var(--danger-dim);color:var(--danger);
-  padding:2px 8px;border-radius:2px;font-size:10px;font-weight:700;
-  letter-spacing:.5px;text-transform:uppercase;
-  font-family:'JetBrains Mono','Courier New',monospace;
+/* ═══ Responsive ══════════════════════════════════════════════════════════ */
+@media(max-width:760px){
+  .topbar{height:52px;padding:0 12px;gap:10px}
+  .brand-text{display:none}
+  .toolbar{padding:8px 12px;gap:6px}
+  .tool-btn{padding:0 10px;font-size:12px}
+  .tool-btn .lbl{display:none}
+  .tool-btn.primary .lbl{display:inline}
+  .search-box{margin-left:0;width:100%;order:99}
+  .file-table thead th{padding:9px 12px}
+  .file-row td{padding:8px 12px}
+  /* Phones: turn each row into "name on line 1, actions on line 2" instead of
+     squeezing four buttons into a narrow column. */
+  .file-table,.file-table thead,.file-table tbody{display:block}
+  .file-table{table-layout:auto}
+  .file-table thead tr{display:flex}
+  .file-table thead th{display:block;flex:1}
+  .file-table thead th.file-col-size,
+  .file-table thead th.file-col-date,
+  .file-table thead th:last-child{display:none}
+  .file-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:11px 14px}
+  .file-row td{display:block;padding:0;border:0;overflow:visible;width:auto}
+  .file-row td.file-name{display:flex;align-items:center;gap:10px;flex:1 1 auto;min-width:0}
+  .file-col-size,.file-col-date{flex:0 0 auto}
+  .file-row td.file-actions{display:flex;justify-content:flex-end;gap:3px;flex:1 1 100%;white-space:nowrap}
+  .file-act-btn{margin-left:0}
+  .file-icon{width:27px;height:27px;border-radius:8px;font-size:9.5px}
+  .file-name-text{font-size:13px}
+  .file-act-btn{padding:0 7px;font-size:11px}
+  .statusbar{padding:6px 12px;font-size:10px;gap:12px}
+  .footer{flex-direction:column;gap:3px;text-align:center}
+  .toast-container{right:12px;left:12px;bottom:12px}
+  .toast{max-width:none}
 }
-.ctrl-btn.admin-btn{color:var(--danger);border-color:var(--danger)}
-.ctrl-btn.admin-btn:hover{background:var(--danger);color:#fff}
-
-/* ═══ LOGIN MODAL ═══ */
-.login-input{
-  width:100%;background:var(--bg);color:var(--text);
-  border:1px solid var(--border);border-radius:2px;padding:10px 14px;
-  font-size:14px;font-family:'JetBrains Mono','Courier New',monospace;
-  transition:border-color .15s;
-}
-.login-input:focus{outline:none;border-color:var(--accent)}
-.login-input::placeholder{color:var(--text-muted)}
-.login-error{color:var(--danger);font-size:12px;min-height:16px;margin-top:6px}
 </style>
 </head>
 <body>
 <div class="progress-bar" id="progress"></div>
 
-<!-- Drop overlay -->
 <div class="drop-overlay" id="dropOverlay">
   <div class="drop-overlay-inner">
-    <div class="drop-overlay-icon">&#9654;</div>
+    <div class="drop-overlay-icon">
+      <svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg>
+    </div>
     <div class="drop-overlay-text" data-i18n="dropFiles">Drop files to upload</div>
   </div>
 </div>
 
-<!-- Toast container -->
 <div class="toast-container" id="toastContainer"></div>
 
-<!-- ═══ TOP BAR ═══ -->
-<div class="topbar">
+<header class="topbar">
   <div class="brand">
-    <div class="brand-dot"></div>
-    <span class="brand-text">FILEBASE</span>
+    <span class="brand-logo">
+      <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+    </span>
+    <span class="brand-text">FileBase</span>
   </div>
-  <div class="breadcrumb" id="breadcrumb"></div>
+  <nav class="breadcrumb" id="breadcrumb"></nav>
   <div class="controls">
     <button class="ctrl-btn admin-btn" id="adminBtn" style="display:none" onclick="App.showLogin()" data-i18n="adminLogin">Admin</button>
-    <button class="ctrl-btn" id="themeToggle" title="Toggle theme">
-      <span id="themeIcon" class="theme-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    <button class="ctrl-btn icon-only" id="themeToggle" title="Toggle theme" aria-label="Toggle theme">
+      <span id="themeIcon" class="theme-icon">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
       </span>
     </button>
-    <button class="ctrl-btn" id="langToggle">EN</button>
+    <button class="ctrl-btn lang-btn" id="langToggle" aria-label="Switch language">EN</button>
   </div>
-</div>
+</header>
 
-<!-- ═══ TOOLBAR ═══ -->
-<div class="toolbar">
-  <button class="tool-btn" onclick="App.goUp()" data-i18n="up">&#8593; Up</button>
-  <button class="tool-btn" onclick="App.refresh()" data-i18n="refresh">&#8635; Refresh</button>
-  <button class="tool-btn primary" onclick="document.getElementById('fileInput').click()" data-i18n="upload">&#11014; Upload</button>
+<section class="toolbar">
+  <button class="tool-btn" onclick="App.goUp()" title="Up">
+    <svg viewBox="0 0 24 24"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg>
+    <span class="lbl" data-i18n="up">Up</span>
+  </button>
+  <button class="tool-btn" onclick="App.refresh()" title="Refresh">
+    <svg viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 4v6h-6"/></svg>
+    <span class="lbl" data-i18n="refresh">Refresh</span>
+  </button>
+  <button class="tool-btn primary" onclick="document.getElementById('fileInput').click()" title="Upload">
+    <svg viewBox="0 0 24 24"><path d="M12 16V4m0 0-4.5 4.5M12 4l4.5 4.5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+    <span class="lbl" data-i18n="upload">Upload</span>
+  </button>
   <input type="file" id="fileInput" multiple style="position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0;overflow:hidden">
-  <button class="tool-btn" onclick="App.newFolderModal()" data-i18n="newFolder">&#9654; Folder</button>
-  <button class="tool-btn" onclick="App.newFileModal()" data-i18n="newFile">&#9654; File</button>
+  <button class="tool-btn" onclick="App.newFolderModal()" title="New folder">
+    <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11.5v5M9.5 14h5"/></svg>
+    <span class="lbl" data-i18n="newFolder">Folder</span>
+  </button>
+  <button class="tool-btn" onclick="App.newFileModal()" title="New file">
+    <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 12.5v5M9.5 15h5"/></svg>
+    <span class="lbl" data-i18n="newFile">File</span>
+  </button>
   <input type="text" class="search-box" id="searchBox" data-i18n-placeholder="search" placeholder="Filter...">
-</div>
+</section>
 
-<!-- ═══ STATUS BAR ═══ -->
 <div class="statusbar" id="statusbar">
   <div class="stat"><div class="dot"></div><span id="statusCount">0 items</span></div>
   <div class="stat" id="statusFolders"></div>
   <div class="stat" id="statusFiles"></div>
 </div>
 
-<!-- ═══ FILE LIST ═══ -->
-<div class="content">
+<main class="content">
   <table class="file-table">
     <thead>
       <tr>
         <th class="file-col-name" onclick="App.sort(0)"><span data-i18n="name">Name</span><span class="sort-arrow">&#9652;</span></th>
         <th class="file-col-size" onclick="App.sort(1)"><span data-i18n="size">Size</span><span class="sort-arrow">&#9652;</span></th>
         <th class="file-col-date" onclick="App.sort(2)"><span data-i18n="modified">Modified</span><span class="sort-arrow">&#9652;</span></th>
-        <th><span data-i18n="actions">Actions</span></th>
+        <th style="text-align:right"><span data-i18n="actions">Actions</span></th>
       </tr>
     </thead>
     <tbody id="tbody"></tbody>
   </table>
   <div class="empty-state" id="emptyState" style="display:none">
-    <div class="empty-state-icon">&#9654;</div>
+    <div class="empty-state-icon">
+      <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+    </div>
     <div class="empty-state-text" data-i18n="emptyDir">Empty directory</div>
   </div>
-</div>
+</main>
 
-<!-- ═══ EDIT MODAL ═══ -->
 <div class="modal-backdrop" id="editBackdrop" onclick="if(event.target===this)App.closeEdit()">
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title"><span class="accent">&#9998;</span> <span id="editTitle">Edit File</span></div>
-      <button class="modal-close" onclick="App.closeEdit()">&times;</button>
+      <button class="modal-close" onclick="App.closeEdit()" aria-label="Close">&times;</button>
     </div>
-    <div class="modal-body">
-      <textarea id="editContent" spellcheck="false"></textarea>
-    </div>
+    <div class="modal-body"><textarea id="editContent" spellcheck="false"></textarea></div>
     <div class="modal-footer">
       <button class="btn" onclick="App.closeEdit()" data-i18n="cancel">Cancel</button>
       <button class="btn btn-primary" onclick="App.saveEdit()" data-i18n="save">Save</button>
@@ -492,12 +519,11 @@ input,button,textarea{font-family:inherit;font-size:inherit}
   </div>
 </div>
 
-<!-- ═══ NAME INPUT MODAL ═══ -->
 <div class="modal-backdrop" id="nameBackdrop" onclick="if(event.target===this)App.closeNameModal()">
   <div class="modal sm">
     <div class="modal-header">
       <div class="modal-title"><span class="accent" id="nameIcon">&#9654;</span> <span id="nameTitle">New Folder</span></div>
-      <button class="modal-close" onclick="App.closeNameModal()">&times;</button>
+      <button class="modal-close" onclick="App.closeNameModal()" aria-label="Close">&times;</button>
     </div>
     <div class="modal-body">
       <input type="text" id="nameInput" placeholder="Enter name..." data-i18n-placeholder="enterName">
@@ -509,32 +535,28 @@ input,button,textarea{font-family:inherit;font-size:inherit}
   </div>
 </div>
 
-<!-- ═══ DELETE CONFIRM MODAL ═══ -->
 <div class="modal-backdrop" id="delBackdrop" onclick="if(event.target===this)App.closeDelModal()">
   <div class="modal sm">
     <div class="modal-header">
       <div class="modal-title" style="color:var(--danger)"><span>&#9888;</span> <span data-i18n="deleteConfirm">Confirm Delete</span></div>
-      <button class="modal-close" onclick="App.closeDelModal()">&times;</button>
+      <button class="modal-close" onclick="App.closeDelModal()" aria-label="Close">&times;</button>
     </div>
-    <div class="modal-body">
-      <p style="font-size:13px;color:var(--text-dim)" id="delMsg">Delete this item?</p>
-    </div>
+    <div class="modal-body"><p style="font-size:13px;color:var(--text-2)" id="delMsg">Delete this item?</p></div>
     <div class="modal-footer">
       <button class="btn" onclick="App.closeDelModal()" data-i18n="cancel">Cancel</button>
-      <button class="btn" style="background:var(--danger);color:#fff;border-color:var(--danger)" onclick="App.confirmDel()" data-i18n="delete">Delete</button>
+      <button class="btn btn-danger" onclick="App.confirmDel()" data-i18n="delete">Delete</button>
     </div>
   </div>
 </div>
 
-<!-- ═══ LOGIN MODAL ═══ -->
 <div class="modal-backdrop" id="loginBackdrop" onclick="if(event.target===this)App.closeLogin()">
   <div class="modal sm">
     <div class="modal-header">
-      <div class="modal-title" style="color:var(--danger)"><span>&#128274;</span> <span data-i18n="adminLogin">Admin Login</span></div>
-      <button class="modal-close" onclick="App.closeLogin()">&times;</button>
+      <div class="modal-title"><span style="color:var(--brand)">&#128274;</span> <span data-i18n="adminLogin">Admin Login</span></div>
+      <button class="modal-close" onclick="App.closeLogin()" aria-label="Close">&times;</button>
     </div>
     <div class="modal-body">
-      <input type="text" id="loginUser" class="login-input" placeholder="Username" data-i18n-placeholder="username" style="margin-bottom:10px"><br>
+      <input type="text" id="loginUser" class="login-input" placeholder="Username" data-i18n-placeholder="username" style="margin-bottom:10px">
       <input type="password" id="loginPass" class="login-input" placeholder="Password" data-i18n-placeholder="password">
       <div class="login-error" id="loginError"></div>
     </div>
@@ -545,12 +567,10 @@ input,button,textarea{font-family:inherit;font-size:inherit}
   </div>
 </div>
 
-<!-- ═══ FOOTER ═══ -->
-<div class="footer">
-  <div class="footer-id"><span>ID:</span><span id="footerUid">—</span></div>
+<footer class="footer">
+  <div class="footer-id"><span>ID</span><span id="footerUid">&mdash;</span></div>
   <div><span data-i18n="serving">Serving</span>: <span id="footerRoot">/sdcard</span> &middot; <span id="footerPort">:6532</span></div>
-</div>
-
+</footer>
 <script>
 /* ═══════════════════════════════════════════════════
    FILEBASE — Android File Manager Frontend
@@ -560,8 +580,8 @@ var App = (() => {
 // ─── i18n ─────────────────────────────────────────
 const L = {
   en: {
-    title:"FILEBASE", up:"↑ Up", refresh:"↻ Refresh", upload:"↑ Upload",
-    newFolder:"▸ Folder", newFile:"▸ File", search:"Filter...",
+    title:"FILEBASE", up:"Up", refresh:"Refresh", upload:"Upload",
+    newFolder:"Folder", newFile:"File", search:"Filter...",
     name:"Name", size:"Size", modified:"Modified", actions:"Actions",
     edit:"Edit", delete:"Delete", rename:"Rename", download:"Download",
     cancel:"Cancel", save:"Save", create:"Create",
@@ -583,15 +603,15 @@ const L = {
     username:"Username", password:"Password", login:"Login",
     loginFailed:"Invalid credentials", rootDir:"Root",
     adminBadges:"ADMIN", filterNoMatch:"No matching files",
-    renameTitle:"Rename", downloadLabel:"Get", loadFailed:"Failed to load directory",
+    renameTitle:"Rename", downloadLabel:"Download", loadFailed:"Failed to load directory",
     actionFailed:"Action failed", invalidName:"Invalid name",
     unsaved:"Unsaved changes", unsavedMsg:"Discard unsaved changes?",
     keepEditing:"Keep editing", discard:"Discard",
     alreadyExists:"A file or folder with that name already exists",
   },
   zh: {
-    title:"文件管理器", up:"↑ 返回", refresh:"↻ 刷新", upload:"↑ 上传",
-    newFolder:"▸ 新建文件夹", newFile:"▸ 新建文件", search:"搜索...",
+    title:"文件管理器", up:"返回", refresh:"刷新", upload:"上传",
+    newFolder:"新建文件夹", newFile:"新建文件", search:"搜索...",
     name:"名称", size:"大小", modified:"修改时间", actions:"操作",
     edit:"编辑", delete:"删除", rename:"重命名", download:"下载",
     cancel:"取消", save:"保存", create:"创建",
@@ -766,7 +786,10 @@ function refresh() { loadDir(currentPath); }
   function renderBreadcrumb() {
     const bc = document.getElementById('breadcrumb');
     const parts = currentPath.split('/').filter(Boolean);
-    let html = '<span class="bc-root" data-nav="/">' + (isAdmin ? '/' : '&#8962;') + '</span>';
+    // Root crumb: an inline SVG (the old "&#8962;" glyph is font-dependent and
+    // rendered as a missing-glyph box on some WebViews).
+    const rootIcon = '<svg viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M6 9.5V20h12V9.5"/></svg>';
+    let html = '<span class="bc-root" data-nav="/">' + (isAdmin ? '/' : rootIcon) + '</span>';
     if (isAdmin) {
       // Show additional root indicator for admin
     }
@@ -809,6 +832,7 @@ function renderTable() {
   });
   items.sort((a, b) => (b.isdir ? 1 : 0) - (a.isdir ? 1 : 0));
   lastRendered = items;
+  updateStatus();   // keep the status counts in sync with the active filter
 
   updateSortHeaders();
 
@@ -830,8 +854,10 @@ function renderTable() {
     const ext = e.isdir ? '' : e.name.split('.').pop().toLowerCase();
     const iconLabel = e.isdir ? (esc(e.name.charAt(0).toUpperCase())) : ext.substring(0, 3).toUpperCase();
     const iconClass = e.isdir ? 'file-icon folder' : 'file-icon';
-    const sizeStr = e.isdir ? '—' : fmtSize(e.size);
-    const mtimeStr = e.isdir ? '—' : fmtDate(e.mtime);
+    // Directories get empty size/date cells: a literal dash looked like stray
+    // clutter once the mobile layout shows those cells inline.
+    const sizeStr = e.isdir ? '' : fmtSize(e.size);
+    const mtimeStr = e.isdir ? '' : fmtDate(e.mtime);
     const encPath = encodeURIComponent(currentPath + e.name);
     const rawPath = currentPath + e.name;
     // Native <a download> cannot send an Authorization header, so pass the

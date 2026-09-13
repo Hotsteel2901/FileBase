@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
 <title>FileBase</title>
 <link rel="stylesheet" href="./style.css">
 </head>
@@ -10,12 +11,17 @@
 
 <header class="topbar">
   <div class="brand">
-    <span class="brand-mark" aria-hidden="true">&#9883;</span>
-    <span class="brand-text">FileBase</span>
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+    </span>
+    <span class="brand-text">
+      <b>FileBase</b>
+      <i data-i18n="subtitle">Control panel</i>
+    </span>
   </div>
   <div class="topbar-actions">
-    <span id="apiBadge" class="badge badge-muted">&#8230;</span>
-    <button id="langBtn" class="ghost-btn" type="button">中文</button>
+    <span id="apiBadge" class="badge">&#8230;</span>
+    <button id="langBtn" class="ghost" type="button">中文</button>
   </div>
 </header>
 
@@ -23,16 +29,17 @@
 
   <!-- ═══ CONTROL ═══════════════════════════════════════════════════════ -->
   <section id="page-control" class="page">
-    <div class="card">
+
+    <div class="card status-card">
       <div class="status-head">
         <span id="statusDot" class="dot dot-idle" aria-hidden="true"></span>
         <span id="statusText" class="status-text" data-i18n="statusChecking">Checking…</span>
       </div>
       <dl class="kv">
         <div class="kv-item"><dt data-i18n="kPid">PID</dt><dd id="vPid">—</dd></div>
-        <div class="kv-item"><dt data-i18n="kAddress">Address</dt><dd id="vAddr">—</dd></div>
         <div class="kv-item"><dt data-i18n="kIface">Interface</dt><dd id="vIface">—</dd></div>
         <div class="kv-item"><dt data-i18n="kLogLevel">Log level</dt><dd id="vLogLevel">—</dd></div>
+        <div class="kv-item addr"><dt data-i18n="kAddress">Address</dt><dd id="vAddr">—</dd></div>
       </dl>
     </div>
 
@@ -40,13 +47,16 @@
       <h2 data-i18n="controls">Controls</h2>
       <div class="btn-row">
         <button id="btnStart" class="btn btn-primary" type="button">
-          <span aria-hidden="true">&#9654;</span> <span data-i18n="startBtn">Start</span>
+          <svg viewBox="0 0 24 24"><path d="M7 5.5v13l11-6.5z"/></svg>
+          <span data-i18n="startBtn">Start</span>
         </button>
         <button id="btnStop" class="btn btn-danger" type="button">
-          <span aria-hidden="true">&#9632;</span> <span data-i18n="stopBtn">Stop</span>
+          <svg viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></svg>
+          <span data-i18n="stopBtn">Stop</span>
         </button>
         <button id="btnRestart" class="btn" type="button">
-          <span aria-hidden="true">&#8635;</span> <span data-i18n="restartBtn">Restart</span>
+          <svg viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 4v6h-6"/></svg>
+          <span data-i18n="restartBtn">Restart</span>
         </button>
       </div>
 
@@ -67,7 +77,7 @@
 
     <div id="fallbackCard" class="card hidden">
       <h2 data-i18n="fallbackTitle">WebUI API unavailable</h2>
-      <p class="hint" data-i18n="fallbackText">This page must be opened from the KernelSU Manager (or another WebUI host). You can still control the module from a terminal:</p>
+      <p class="hint" data-i18n="fallbackText">Open this page from the KernelSU Manager. You can still control the module from a terminal:</p>
       <pre id="fallbackCmd" class="console"></pre>
     </div>
   </section>
@@ -77,8 +87,9 @@
     <div class="card">
       <div class="card-head">
         <h2 data-i18n="logsTitle">Server logs</h2>
-        <button id="btnRefreshLogs" class="btn btn-small" type="button">
-          <span aria-hidden="true">&#8635;</span> <span data-i18n="refreshBtn">Refresh</span>
+        <button id="btnRefreshLogs" class="btn btn-sm" type="button">
+          <svg viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 4v6h-6"/></svg>
+          <span data-i18n="refreshBtn">Refresh</span>
         </button>
       </div>
       <p class="hint" data-i18n="logsHint">Last 120 lines of logs/server.log</p>
@@ -98,23 +109,29 @@
 
 <nav class="tabbar">
   <button id="tab-control" class="tab is-active" type="button" data-page="control">
-    <span class="tab-icon" aria-hidden="true">&#9889;</span>
+    <span class="tab-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M13 2 4.5 13H11l-1 9 8.5-11H12z"/></svg>
+    </span>
     <span class="tab-label" data-i18n="navControl">Control</span>
   </button>
   <button id="tab-logs" class="tab" type="button" data-page="logs">
-    <span class="tab-icon" aria-hidden="true">&#128203;</span>
+    <span class="tab-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4"/></svg>
+    </span>
     <span class="tab-label" data-i18n="navLogs">Logs</span>
   </button>
   <button id="tab-about" class="tab" type="button" data-page="about">
-    <span class="tab-icon" aria-hidden="true">&#8505;</span>
+    <span class="tab-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.6v.1"/></svg>
+    </span>
     <span class="tab-label" data-i18n="navAbout">About</span>
   </button>
 </nav>
 
 <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
-<!-- KernelSU module guide: entry is webroot/index.html; script.js is an ES
-     module importing the official "kernelsu" library (vendored in webroot). -->
+<!-- KernelSU module guide: the entry point is webroot/index.html; the logic is
+     an ES module that imports the official "kernelsu" library. -->
 <script type="module" src="./script.js"></script>
 </body>
 </html>
