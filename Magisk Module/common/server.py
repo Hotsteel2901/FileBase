@@ -4,9 +4,13 @@
 import http.server
 import json
 import os
+import re
+import signal
 import shutil
 import stat
 import sys
+import threading
+import time
 import urllib.parse
 import mimetypes
 import subprocess
@@ -23,6 +27,39 @@ ADMIN_USER = "admin"
 ADMIN_PASS = "hotsteel"
 ADMIN_TOKENS = {}  # token -> True (in-memory session store)
 
+# Maximum number of bytes we will read into memory for a JSON request body.
+_JSON_BODY_LIMIT = 104857600  # 100 MB
+_META_BODY_LIMIT = 65536      # 64 KB
+
+_STATUS_RE = re.compile(r'"\s*(\d{3})(?:\s|$)')
+_ERRCODE_RE = re.compile(r'\bcode\s+(\d{3})\b')
+
+
+def _content_length(handler):
+    """Parse the request Content-Length.
+
+    Returns the byte count, or None when the header is missing/invalid.
+    """
+    raw = handler.headers.get("Content-Length")
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if value < 0:
+        return None
+    return value
+
+
+def _under_root(root_real, candidate):
+    """True when *candidate* is the root itself or lives inside it."""
+    if root_real == "/":
+        return candidate.startswith("/")
+    if candidate == root_real:
+        return True
+    return candidate.startswith(root_real + os.sep)
+
 # ── HTML frontend (embedded so no extra files needed) ────────────────────
 
 INDEX_HTML = r"""<!DOCTYPE html>
@@ -31,9 +68,7 @@ INDEX_HTML = r"""<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>FileBase</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Figtree:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- No external webfonts: the server usually runs on an offline hotspot LAN. -->
 <style>
 /* ═══ RESET ═══ */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -67,7 +102,7 @@ INDEX_HTML = r"""<!DOCTYPE html>
 /* ═══ BASE ═══ */
 html{font-size:15px;-webkit-text-size-adjust:100%;scroll-behavior:smooth}
 body{
-  font-family:'Figtree',-apple-system,'Segoe UI','Helvetica Neue',sans-serif;
+  font-family:'Figtree',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
   background:var(--bg);color:var(--text);min-height:100vh;
   display:flex;flex-direction:column;
   background-image:radial-gradient(var(--dot) 1px,transparent 1px);
@@ -93,7 +128,7 @@ input,button,textarea{font-family:inherit;font-size:inherit}
   position:sticky;top:0;z-index:100;gap:16px;
 }
 .brand{
-  font-family:'Bebas Neue',Impact,'Arial Black',sans-serif;
+  font-family:'Bebas Neue','Arial Narrow',Impact,'Arial Black',sans-serif;
   font-size:22px;letter-spacing:3px;color:var(--accent);
   display:flex;align-items:center;gap:10px;flex-shrink:0;
   user-select:none;
@@ -408,7 +443,7 @@ input,button,textarea{font-family:inherit;font-size:inherit}
   <button class="tool-btn" onclick="App.goUp()" data-i18n="up">&#8593; Up</button>
   <button class="tool-btn" onclick="App.refresh()" data-i18n="refresh">&#8635; Refresh</button>
   <button class="tool-btn primary" onclick="document.getElementById('fileInput').click()" data-i18n="upload">&#11014; Upload</button>
-  <input type="file" id="fileInput" multiple style="position:fixed;top:-9999px;left:-9999px;width:1px;height:1px">
+  <input type="file" id="fileInput" multiple style="position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0;overflow:hidden">
   <button class="tool-btn" onclick="App.newFolderModal()" data-i18n="newFolder">&#9654; Folder</button>
   <button class="tool-btn" onclick="App.newFileModal()" data-i18n="newFile">&#9654; File</button>
   <input type="text" class="search-box" id="searchBox" data-i18n-placeholder="search" placeholder="Filter...">
@@ -469,7 +504,7 @@ input,button,textarea{font-family:inherit;font-size:inherit}
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="App.closeNameModal()" data-i18n="cancel">Cancel</button>
-      <button class="btn btn-primary" onclick="App.confirmName()" data-i18n="create">Create</button>
+      <button class="btn btn-primary" id="nameConfirmBtn" onclick="App.confirmName()">Create</button>
     </div>
   </div>
 </div>
@@ -548,6 +583,11 @@ const L = {
     username:"Username", password:"Password", login:"Login",
     loginFailed:"Invalid credentials", rootDir:"Root",
     adminBadges:"ADMIN", filterNoMatch:"No matching files",
+    renameTitle:"Rename", downloadLabel:"Get", loadFailed:"Failed to load directory",
+    actionFailed:"Action failed", invalidName:"Invalid name",
+    unsaved:"Unsaved changes", unsavedMsg:"Discard unsaved changes?",
+    keepEditing:"Keep editing", discard:"Discard",
+    alreadyExists:"A file or folder with that name already exists",
   },
   zh: {
     title:"文件管理器", up:"↑ 返回", refresh:"↻ 刷新", upload:"↑ 上传",
@@ -573,6 +613,11 @@ const L = {
     username:"用户名", password:"密码", login:"登录",
     loginFailed:"用户名或密码错误", rootDir:"根目录",
     adminBadges:"管理员", filterNoMatch:"无匹配文件",
+    renameTitle:"重命名", downloadLabel:"下载", loadFailed:"目录加载失败",
+    actionFailed:"操作失败", invalidName:"名称无效",
+    unsaved:"有未保存的修改", unsavedMsg:"放弃未保存的修改？",
+    keepEditing:"继续编辑", discard:"放弃",
+    alreadyExists:"已存在同名文件或文件夹",
   }
 };
 
@@ -582,6 +627,9 @@ let currentData = [];
 let sortCol = 0, sortAsc = true;
 let nameMode = null;
 let editingPath = "";
+let renameTarget = "";
+let editDirty = false;
+let lastRendered = [];
 let delTarget = null;
 let delIsDir = false;
 let dragCounter = 0;
@@ -609,7 +657,7 @@ function detectLang() {
   const sys = navigator.language || navigator.userLanguage || '';
   return sys.toLowerCase().startsWith('zh') ? 'zh' : 'en';
 }
-function getLang() { return localStorage.getItem('fb_lang') || 'en'; }
+function getLang() { return detectLang(); }
 function setLang(lang) {
   localStorage.setItem('fb_lang', lang);
   applyLang();
@@ -618,7 +666,8 @@ function t(key) { return L[getLang()][key] || L.en[key] || key; }
 function applyLang() {
   const lang = getLang();
   document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
-  document.getElementById('langToggle').textContent = L[lang].langBtn;
+  // Show the language the button will switch *to*, not the current one.
+  document.getElementById('langToggle').textContent = lang === 'zh' ? 'EN' : '中文';
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
     if (L[lang][key]) el.textContent = L[lang][key];
@@ -669,9 +718,14 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     const merged = Object.assign({}, opts || {});
     merged.headers = authHeaders(merged.headers);
     const res = await fetch('/api' + endpoint, merged);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Server error');
-    return data;
+    let data = null;
+    try { data = await res.json(); } catch(e) { data = null; }
+    if (!res.ok) {
+      const err = new Error((data && data.error) || ('HTTP ' + res.status));
+      err.status = res.status;
+      throw err;
+    }
+    return data || {};
   }
 async function loadDir(path) {
   showProgress(30);
@@ -685,9 +739,14 @@ async function loadDir(path) {
     setTimeout(() => showProgress(0), 300);
   } catch(e) {
     showProgress(0);
+    currentData = [];
     document.getElementById('tbody').innerHTML = '';
-    document.getElementById('emptyState').style.display = 'block';
+    const empty = document.getElementById('emptyState');
+    empty.style.display = 'block';
+    empty.querySelector('.empty-state-text').textContent =
+      t('loadFailed') + ': ' + (e && e.message ? e.message : '');
     updateStatus();
+    toast(t('loadFailed') + ': ' + (e && e.message ? e.message : ''), 'error');
   }
 }
 
@@ -726,8 +785,8 @@ function refresh() { loadDir(currentPath); }
 
 // ─── Status Bar ───────────────────────────────────
 function updateStatus() {
-  const total = currentData.length;
-  const dirs = currentData.filter(e => e.isdir).length;
+  const total = lastRendered.length;
+  const dirs = lastRendered.filter(e => e.isdir).length;
   const files = total - dirs;
   document.getElementById('statusCount').textContent = total + ' ' + t('items');
   document.getElementById('statusFolders').textContent = dirs + ' ' + t('folders');
@@ -749,6 +808,7 @@ function renderTable() {
     return va < vb ? (sortAsc ? -1 : 1) : va > vb ? (sortAsc ? 1 : -1) : 0;
   });
   items.sort((a, b) => (b.isdir ? 1 : 0) - (a.isdir ? 1 : 0));
+  lastRendered = items;
 
   updateSortHeaders();
 
@@ -774,16 +834,24 @@ function renderTable() {
     const mtimeStr = e.isdir ? '—' : fmtDate(e.mtime);
     const encPath = encodeURIComponent(currentPath + e.name);
     const rawPath = currentPath + e.name;
+    // Native <a download> cannot send an Authorization header, so pass the
+    // admin token in the query string to keep downloads streaming (and range
+    // capable) instead of buffering the whole file in JavaScript.
+    const tok = (isAdmin && adminToken) ? ('&token=' + encodeURIComponent(adminToken)) : '';
+    const dlUrl = '/api/download?path=' + encPath + tok;
 
     let nameHtml;
     if (e.isdir) {
       nameHtml = '<a class="file-name-link" data-action="navigate" data-path="' + esc(rawPath) + '/">' + esc(e.name) + '</a>';
     } else {
-      nameHtml = '<a class="file-name-link" href="/api/download?path=' + encPath + '" download>' + esc(e.name) + '</a>';
+      nameHtml = '<a class="file-name-link" href="' + esc(dlUrl) + '" download>' + esc(e.name) + '</a>';
     }
 
     const isdir = e.isdir ? '1' : '0';
     let acts = '';
+    if (!e.isdir) {
+      acts += '<button class="file-act-btn" data-action="download" data-url="' + esc(dlUrl) + '">' + t('downloadLabel') + '</button>';
+    }
     if (e.editable) {
       acts += '<button class="file-act-btn" data-action="edit" data-path="' + esc(rawPath) + '">' + t('editLabel') + '</button>';
     }
@@ -829,8 +897,8 @@ async function uploadFiles(files) {
     const pctRange = 100 / arr.length;
     await new Promise(resolve => {
       const fd = new FormData();
-      fd.append('file', file);
       fd.append('path', currentPath);
+      fd.append('file', file);
       const xhr = new XMLHttpRequest();
       xhr.open('POST', '/api/upload');
 	      if (isAdmin && adminToken) xhr.setRequestHeader('Authorization', 'Bearer ' + adminToken);
@@ -891,21 +959,20 @@ async function confirmDel() {
     toast(t('deleted'), 'success');
     closeDelModal();
     refresh();
-  } catch(e) {}
+  } catch(e) {
+    toast(t('actionFailed') + ': ' + (e && e.message ? e.message : ''), 'error');
+  }
 }
 
 // ─── Rename ───────────────────────────────────────
-async function renameItem(oldPath) {
+function renameItem(oldPath) {
+  renameTarget = oldPath;
   const oldName = oldPath.split('/').filter(Boolean).pop();
-  const newName = prompt(t('rename') + ':', oldName);
-  if (!newName || newName === oldName) return;
-  const dir = oldPath.substring(0, oldPath.lastIndexOf('/') + 1);
-  try {
-    await api('/rename', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({oldPath: oldPath, newPath: dir + newName}) });
-    toast(t('renamed'), 'success');
-    refresh();
-  } catch(e) {}
+  nameMode = 'rename';
+  openNameModal(t('renameTitle'), '✎');
+  const inp = document.getElementById('nameInput');
+  inp.value = oldName;
+  inp.select();
 }
 
 // ─── Edit File ────────────────────────────────────
@@ -916,25 +983,40 @@ async function editFile(path) {
   try {
     const res = await fetch('/api/download?path=' + encodeURIComponent(path),
         {headers: authHeaders()});
+    if (!res.ok) {
+      let msg = t('cannotRead');
+      try { const j = await res.json(); if (j && j.error) msg = j.error; } catch(e) {}
+      throw new Error(msg);
+    }
     const text = await res.text();
     document.getElementById('editContent').value = text;
+    editDirty = false;
     document.getElementById('editBackdrop').classList.add('active');
-  } catch(e) { toast(t('cannotRead'), 'error'); }
+  } catch(e) { toast((e && e.message) || t('cannotRead'), 'error'); }
 }
 async function saveEdit() {
   const content = document.getElementById('editContent').value;
   try {
     const res = await fetch('/api/write', { method:'POST',
       headers: authHeaders({'Content-Type':'application/json'}),
-      body: JSON.stringify({path: editingPath, content}) });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
+      body: JSON.stringify({path: editingPath, content, overwrite: true}) });
+    let data = null;
+    try { data = await res.json(); } catch(e) { data = null; }
+    if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+    editDirty = false;
     toast(t('saved'), 'success');
     closeEdit();
     refresh();
-  } catch(e) { toast(e.message, 'error'); }
+  } catch(e) { toast((e && e.message) || t('actionFailed'), 'error'); }
 }
-function closeEdit() { document.getElementById('editBackdrop').classList.remove('active'); }
+function closeEdit(force) {
+  if (!force && editDirty) {
+    const discard = confirm(t('unsaved') + '\n\n' + t('unsavedMsg'));
+    if (!discard) return;
+  }
+  editDirty = false;
+  document.getElementById('editBackdrop').classList.remove('active');
+}
 
 // ─── New File / Folder ────────────────────────────
 function newFolderModal() { nameMode = 'folder'; openNameModal(t('newFolderTitle'), '▸'); }
@@ -944,6 +1026,8 @@ function openNameModal(title, icon) {
   document.getElementById('nameIcon').textContent = icon;
   document.getElementById('nameInput').value = '';
   document.getElementById('nameInput').placeholder = t('enterName');
+  const okBtn = document.getElementById('nameConfirmBtn');
+  if (okBtn) okBtn.textContent = nameMode === 'rename' ? t('rename') : t('create');
   document.getElementById('nameBackdrop').classList.add('active');
   setTimeout(() => document.getElementById('nameInput').focus(), 100);
 }
@@ -951,19 +1035,34 @@ function closeNameModal() { document.getElementById('nameBackdrop').classList.re
 async function confirmName() {
   const name = document.getElementById('nameInput').value.trim();
   if (!name) return;
+  if (name.indexOf('/') !== -1 || name === '.' || name === '..') {
+    toast(t('invalidName'), 'error');
+    return;
+  }
   const fullPath = currentPath + name;
   try {
     if (nameMode === 'folder') {
       await api('/mkdir', { method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({path: fullPath}) });
+    } else if (nameMode === 'rename') {
+      const dir = renameTarget.substring(0, renameTarget.lastIndexOf('/') + 1);
+      if (dir + name === renameTarget) { closeNameModal(); return; }
+      await api('/rename', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({oldPath: renameTarget, newPath: dir + name}) });
     } else {
       await api('/write', { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({path: fullPath, content: ''}) });
+        body: JSON.stringify({path: fullPath, content: '', overwrite: false}) });
     }
-    toast(t('created') + ': ' + name, 'success');
+    toast(t(nameMode === 'rename' ? 'renamed' : 'created') + ': ' + name, 'success');
     closeNameModal();
     refresh();
-  } catch(e) {}
+  } catch(e) {
+    if (e && e.status === 409) {
+      toast(t('alreadyExists'), 'error');
+    } else {
+      toast(t('actionFailed') + ': ' + (e && e.message ? e.message : ''), 'error');
+    }
+  }
 }
 
 // ─── Drag & Drop ──────────────────────────────────
@@ -980,6 +1079,17 @@ document.addEventListener('drop', e => {
 
 // ─── Progress ─────────────────────────────────────
 function showProgress(pct) { document.getElementById('progress').style.width = pct + '%'; }
+
+// ─── Download ─────────────────────────────────────
+function triggerDownload(url) {
+  if (!url) return;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
 
 // ─── Toast ────────────────────────────────────────
 function toast(msg, type) {
@@ -1115,6 +1225,16 @@ function esc(s) {
       setLang(getLang() === 'en' ? 'zh' : 'en');
     });
 
+    // Track editor dirtiness so closing with unsaved changes can warn.
+    document.getElementById('editContent').addEventListener('input', () => {
+      editDirty = true;
+    });
+
+    // Enter confirms the new-file / new-folder / rename dialog.
+    document.getElementById('nameInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') confirmName();
+    });
+
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') {
         closeEdit(); closeNameModal(); closeDelModal(); closeLogin();
@@ -1137,6 +1257,7 @@ function esc(s) {
       else if (action === 'rename') renameItem(path);
       else if (action === 'delete') deleteItem(path, btn.dataset.isdir === '1');
       else if (action === 'navigate') go(path);
+      else if (action === 'download') triggerDownload(btn.dataset.url);
     });
 
     // Search input
@@ -1187,14 +1308,31 @@ def _is_binary(filepath):
         return True
 
 class Handler(http.server.BaseHTTPRequestHandler):
+    # HTTP/1.1 enables keep-alive. Every response must therefore carry an
+    # accurate Content-Length (or use Connection: close).
+    protocol_version = "HTTP/1.1"
+    # Drop idle/stalled connections so a client that stops reading cannot pin
+    # a worker thread forever.
+    timeout = 60
 
     def _is_admin(self):
-        """Check if the request carries a valid admin token."""
+        """Check if the request carries a valid admin token.
+
+        The token is normally sent as a ``Bearer`` authorization header.  Native
+        browser downloads (``<a download>``) cannot set headers, so a ``token``
+        query parameter is accepted as well; that keeps large downloads
+        streamable by the browser instead of buffering them in JavaScript.
+        """
         auth = self.headers.get("Authorization", "")
         if auth.startswith("Bearer "):
-            token = auth[7:]
-            return token in ADMIN_TOKENS
-        return False
+            if auth[7:] in ADMIN_TOKENS:
+                return True
+        try:
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            token = qs.get("token", [""])[0]
+        except Exception:
+            token = ""
+        return bool(token) and token in ADMIN_TOKENS
 
     def _get_root(self):
         """Return filesystem root based on admin status."""
@@ -1260,39 +1398,65 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except ValueError:
                 mtime = 0
             is_dir = (ftype == 'd')
+            editable = False
+            if not is_dir and size <= 5 * 1024 * 1024:
+                # Mirror the non-admin listing: never offer the text editor for
+                # binary payloads (a video/mp3 would be corrupted on save).
+                try:
+                    editable = not _is_binary(os.path.join(path, name))
+                except Exception:
+                    editable = False
             entries.append({
                 "name": name,
                 "isdir": is_dir,
                 "size": size,
                 "mtime": mtime,
-                "editable": not is_dir and size <= 5 * 1024 * 1024,
+                "editable": editable,
             })
         return entries
+
+    @staticmethod
+    def _status_code(msg):
+        """Best-effort extraction of an HTTP status code from a log line."""
+        m = _STATUS_RE.search(msg)
+        if m:
+            return int(m.group(1))
+        m = _ERRCODE_RE.search(msg)
+        if m:
+            return int(m.group(1))
+        m = re.match(r'^\s*(\d{3})\s', msg)
+        if m:
+            return int(m.group(1))
+        return None
 
     def log_message(self, format, *args):
         if LOG_LEVEL == "off":
             return
         msg = format % args
+        if "/api/ping" in msg:
+            return  # health probe: never logged
         stripped = msg.strip()
         if LOG_LEVEL == "error":
-            # Only log 4xx/5xx status codes; skip request lines
-            if not (len(stripped) == 3 and stripped.isdigit() and stripped[0] in "45"):
+            # Only log 4xx/5xx responses. request lines look like
+            # `"GET /x HTTP/1.1" 404 -` and send_error() lines look like
+            # `code 404, message ...`, so parse the code out of either shape.
+            code = self._status_code(stripped)
+            if code is None or code < 400:
                 return
-            sys.stderr.write("[server] %s - [%s] %s\n" %
-                             (self.client_address[0],
-                              self.log_date_time_string(), msg))
+            sys.stderr.write("[%s] %s - [%s] %s\n" %
+                             (HOST,
+                              self.client_address[0],
+                              self.log_date_time_string(), stripped))
         elif LOG_LEVEL == "debug":
-            import time
             ts = time.strftime("%H:%M:%S")
             sys.stderr.write("[%s] %s:%d %s| %s\n" %
                              (ts, self.client_address[0],
-                              self.client_address[1], self.command, msg))
+                              self.client_address[1], self.command, stripped))
         else:
-            sys.stderr.write("[%s] %s - [%s] \"%s %s\" %s\n" %
+            sys.stderr.write("[%s] %s - [%s] %s\n" %
                              (HOST,
                               self.client_address[0],
-                              self.log_date_time_string(),
-                              self.command, self.path, msg))
+                              self.log_date_time_string(), stripped))
 
     # ── GET ──────────────────────────────────────────────────────────────
     def do_GET(self):
@@ -1301,15 +1465,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         # Homepage / UI
         if parsed.path == "/" or parsed.path == "/index.html":
+            body = INDEX_HTML.encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
             self.end_headers()
-            self.wfile.write(INDEX_HTML.encode())
+            self.wfile.write(body)
             return
 
         # API: check admin auth status
         if parsed.path == "/api/auth":
             self._json_response(200, {"admin": self._is_admin()})
+            return
+
+        # API: lightweight health probe used by action.sh / the WebUI. It is
+        # deliberately excluded from the request log so status polling does not
+        # fill server.log with noise.
+        if parsed.path == "/api/ping":
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
             return
 
         # API: list directory
@@ -1327,7 +1506,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         return self._json_error(404, "Directory not found")
                     for name in os.listdir(full):
                         fp = os.path.join(full, name)
-                        st = os.stat(fp)
+                        try:
+                            st = os.stat(fp)
+                        except OSError:
+                            # Broken symlink or a file that vanished mid-listing:
+                            # keep the entry (using lstat when possible) instead
+                            # of failing the whole directory listing.
+                            try:
+                                st = os.lstat(fp)
+                            except OSError:
+                                continue
                         isdir = stat.S_ISDIR(st.st_mode)
                         editable = not isdir and st.st_size <= 5 * 1024 * 1024 and not _is_binary(fp)
                         entries.append({
@@ -1339,6 +1527,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         })
             except PermissionError:
                 return self._json_error(403, "Permission denied")
+            except OSError as e:
+                self.log_message("ERROR: %s", e)
+                return self._json_error(500, "Internal error")
             self._json_response(200, {"entries": entries})
             return
 
@@ -1348,59 +1539,39 @@ class Handler(http.server.BaseHTTPRequestHandler):
             full = self._resolve(path)
             if not full:
                 return self._json_error(403, "Path not allowed")
-            fname = os.path.basename(full)
-            ctype, _ = mimetypes.guess_type(full)
-            if not ctype:
-                ctype = "application/octet-stream"
-            if self._is_admin():
-                # Use su to read file, then fall back if it fails
-                code, stdout, stderr = self._su_exec('cat ' + shlex.quote(full), timeout=60)
-                if code != 0:
-                    return self._json_error(404, "File not found or permission denied")
-                self.send_response(200)
-                self.send_header("Content-Type", ctype)
-                try:
-                    safe_fname = fname.encode('ascii', 'replace').decode('ascii')
-                    self.send_header("Content-Disposition",
-                        "attachment; filename=\"%s\"; filename*=UTF-8''%s" %
-                        (safe_fname, urllib.parse.quote(fname, safe='')))
-                except UnicodeEncodeError:
-                    self.send_header("Content-Disposition",
-                        "attachment; filename=\"download\"")
-                self.send_header("Content-Length", str(len(stdout)))
-                self.end_headers()
-                self.wfile.write(stdout)
-                return
-            if not os.path.isfile(full):
-                return self._json_error(404, "File not found")
-            size = os.path.getsize(full)
-            self.send_response(200)
-            self.send_header("Content-Type", ctype)
-            try:
-                safe_fname = fname.encode('ascii', 'replace').decode('ascii')
-                self.send_header("Content-Disposition",
-                    "attachment; filename=\"%s\"; filename*=UTF-8''%s" %
-                    (safe_fname, urllib.parse.quote(fname, safe='')))
-            except UnicodeEncodeError:
-                self.send_header("Content-Disposition",
-                    "attachment; filename=\"download\"")
-            self.send_header("Content-Length", str(size))
-            self.end_headers()
-            with open(full, "rb") as f:
-                while True:
-                    chunk = f.read(65536)
-                    if not chunk:
-                        break
-                    self.wfile.write(chunk)
-            return
+            return self._serve_download(full)
 
         # Fallback: serve static or 404
+        not_found = b"Not found"
         self.send_response(404)
-        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(not_found)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(b"Not found")
+        self.wfile.write(not_found)
 
     # ── POST ─────────────────────────────────────────────────────────────
+    def _json_body(self, limit):
+        """Read and parse a JSON request body, replying with an error on failure.
+
+        Returns the parsed object, or None when a response has already been
+        sent (missing/invalid Content-Length, oversized or malformed body).
+        """
+        length = _content_length(self)
+        if length is None:
+            self._json_error(411, "Content-Length required")
+            return None
+        if length > limit:
+            self._json_error(413, "Request too large")
+            return None
+        body = self.rfile.read(length)
+        try:
+            return json.loads(body)
+        except Exception:
+            self._json_error(400, "Invalid JSON")
+            return None
+
     def do_POST(self):
         # CSRF protection: reject cross-origin POSTs
         origin = self.headers.get("Origin", "")
@@ -1421,14 +1592,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         # API: admin login
         if parsed.path == "/api/login":
-            length = int(self.headers.get("Content-Length", 0))
-            if length > 4096:
-                return self._json_error(413, "Request too large")
-            body = self.rfile.read(length)
-            try:
-                data = json.loads(body)
-            except Exception:
-                return self._json_error(400, "Invalid JSON")
+            data = self._json_body(4096)
+            if data is None:
+                return
             user = data.get("user", "")
             pwd = data.get("pass", "")
             if user == ADMIN_USER and pwd == ADMIN_PASS:
@@ -1454,19 +1620,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         # API: write file content
         if parsed.path == "/api/write":
-            length = int(self.headers.get("Content-Length", 0))
-            if length > 104857600:  # 100 MB limit
-                return self._json_error(413, "Too large (max 100 MB)")
-            body = self.rfile.read(length)
-            try:
-                data = json.loads(body)
-            except Exception:
-                return self._json_error(400, "Invalid JSON")
+            data = self._json_body(_JSON_BODY_LIMIT)
+            if data is None:
+                return
             path = data.get("path", "")
             content = data.get("content", "")
             full = self._resolve(path)
             if not full:
                 return self._json_error(403, "Path not allowed")
+            if not data.get("overwrite", True) and self._path_exists(full):
+                return self._json_error(409, "File already exists")
             try:
                 if self._is_admin():
                     qfull = shlex.quote(full)
@@ -1489,17 +1652,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         # API: delete
         if parsed.path == "/api/delete":
-            length = int(self.headers.get("Content-Length", 0))
-            if length > 65536:
-                return self._json_error(413, "Request too large")
-            body = self.rfile.read(length)
-            try:
-                data = json.loads(body)
-            except Exception:
-                return self._json_error(400, "Invalid JSON")
+            data = self._json_body(_META_BODY_LIMIT)
+            if data is None:
+                return
             full = self._resolve(data.get("path", ""))
             if not full:
                 return self._json_error(403, "Path not allowed")
+            if full == os.path.realpath(self._get_root()):
+                return self._json_error(400, "Refusing to delete the root directory")
             try:
                 if self._is_admin():
                     qfull = shlex.quote(full)
@@ -1519,14 +1679,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         # API: mkdir
         if parsed.path == "/api/mkdir":
-            length = int(self.headers.get("Content-Length", 0))
-            if length > 65536:
-                return self._json_error(413, "Request too large")
-            body = self.rfile.read(length)
-            try:
-                data = json.loads(body)
-            except Exception:
-                return self._json_error(400, "Invalid JSON")
+            data = self._json_body(_META_BODY_LIMIT)
+            if data is None:
+                return
             full = self._resolve(data.get("path", ""))
             if not full:
                 return self._json_error(403, "Path not allowed")
@@ -1546,14 +1701,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         # API: rename
         if parsed.path == "/api/rename":
-            length = int(self.headers.get("Content-Length", 0))
-            if length > 65536:
-                return self._json_error(413, "Request too large")
-            body = self.rfile.read(length)
-            try:
-                data = json.loads(body)
-            except Exception:
-                return self._json_error(400, "Invalid JSON")
+            data = self._json_body(_META_BODY_LIMIT)
+            if data is None:
+                return
             old = self._resolve(data.get("oldPath", ""))
             new = self._resolve(data.get("newPath", ""))
             if not old or not new:
@@ -1580,26 +1730,207 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._json_error(404, "Unknown endpoint")
 
     # ── Helpers ──────────────────────────────────────────────────────────
+    def _path_exists(self, full):
+        """Existence check that also works for paths only root can see."""
+        try:
+            if os.path.lexists(full):
+                return True
+        except OSError:
+            pass
+        if self._is_admin():
+            code, _, _ = self._su_exec(
+                '[ -e %s ] || [ -L %s ]' % (shlex.quote(full), shlex.quote(full)),
+                timeout=10)
+            return code == 0
+        return False
+
+    @staticmethod
+    def _content_disposition(fname):
+        """Build an RFC 6266 / RFC 5987 compliant Content-Disposition value."""
+        try:
+            ascii_fname = fname.encode('ascii', 'replace').decode('ascii')
+        except Exception:
+            ascii_fname = "download"
+        ascii_fname = ascii_fname.replace('"', '').replace('\\', '')
+        if not ascii_fname:
+            ascii_fname = "download"
+        return "attachment; filename=\"%s\"; filename*=UTF-8''%s" % (
+            ascii_fname, urllib.parse.quote(fname, safe=''))
+
+    def _parse_range(self, size):
+        """Parse a single-range ``Range`` header.
+
+        Returns (start, end) inclusive, ``None`` when the header is absent or
+        unsupported, or ``"invalid"`` when the client asked for an unsatisfiable
+        range (caller should reply 416).
+        """
+        header = self.headers.get("Range", "").strip()
+        if not header or not header.startswith("bytes="):
+            return None
+        spec = header[len("bytes="):].split(",")[0].strip()
+        if "-" not in spec:
+            return None
+        start_s, _, end_s = spec.partition("-")
+        try:
+            if start_s == "":
+                # Suffix range: last N bytes.
+                length = int(end_s)
+                if length <= 0:
+                    return "invalid"
+                start = max(0, size - length)
+                end = size - 1
+            else:
+                start = int(start_s)
+                end = int(end_s) if end_s else size - 1
+        except ValueError:
+            return None
+        if size == 0:
+            return "invalid"
+        if start < 0 or start >= size or end < start:
+            return "invalid"
+        end = min(end, size - 1)
+        return (start, end)
+
+    def _serve_download(self, full):
+        """Stream a file with HTTP range support.
+
+        The server process usually already runs as root (module mode), so a
+        plain ``open()`` is attempted first.  Only when that fails do we fall
+        back to ``su -c cat`` for admin sessions — and that fallback streams the
+        subprocess output instead of buffering the whole file in memory.
+        """
+        if os.path.isdir(full):
+            return self._json_error(400, "Is a directory")
+
+        fname = os.path.basename(full) or "download"
+        ctype, _ = mimetypes.guess_type(full)
+        if not ctype:
+            ctype = "application/octet-stream"
+
+        try:
+            f = open(full, "rb")
+        except (FileNotFoundError, NotADirectoryError):
+            return self._json_error(404, "File not found")
+        except PermissionError:
+            if self._is_admin():
+                return self._serve_download_via_su(full, fname, ctype)
+            return self._json_error(403, "Permission denied")
+        except OSError:
+            return self._json_error(404, "File not found")
+
+        try:
+            size = os.fstat(f.fileno()).st_size
+            rng = self._parse_range(size)
+            if rng == "invalid":
+                self.send_response(416)
+                self.send_header("Content-Range", "bytes */%d" % size)
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+
+            if rng:
+                start, end = rng
+                length = end - start + 1
+                self.send_response(206)
+                self.send_header("Content-Range",
+                                 "bytes %d-%d/%d" % (start, end, size))
+                f.seek(start)
+            else:
+                start, length = 0, size
+                self.send_response(200)
+
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Disposition", self._content_disposition(fname))
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Length", str(length))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self._copy_stream(f, length)
+        finally:
+            try:
+                f.close()
+            except Exception:
+                pass
+
+    def _serve_download_via_su(self, full, fname, ctype):
+        """Fallback download for files the server process cannot read directly."""
+        qfull = shlex.quote(full)
+        # Verify the file exists and is readable before we commit to a 200.
+        try:
+            probe = subprocess.run(
+                ["su", "-c", "[ -f %s ] && [ -r %s ]" % (qfull, qfull)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+        except Exception:
+            return self._json_error(404, "File not found or permission denied")
+        if probe.returncode != 0:
+            return self._json_error(404, "File not found or permission denied")
+
+        try:
+            proc = subprocess.Popen(
+                ["su", "-c", "cat " + qfull],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        except Exception:
+            return self._json_error(404, "File not found or permission denied")
+
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Disposition", self._content_disposition(fname))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        try:
+            while True:
+                chunk = proc.stdout.read(65536)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            try:
+                proc.stdout.close()
+            except Exception:
+                pass
+            try:
+                proc.wait(timeout=5)
+            except Exception:
+                proc.kill()
+
+    def _copy_stream(self, f, length):
+        """Copy at most *length* bytes from a binary file to the response."""
+        remaining = length
+        while remaining > 0:
+            chunk = f.read(min(65536, remaining))
+            if not chunk:
+                break
+            try:
+                self.wfile.write(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                break
+            remaining -= len(chunk)
+
     def _resolve(self, path):
         """Resolve a virtual path under the appropriate root, preventing traversal.
         Returns the real path, or None if path escapes root."""
         root = self._get_root()
         root_real = os.path.realpath(root)
-        # Strip common prefix to avoid double-joining when path contains root
-        clean = os.path.normpath("/" + path.lstrip("/"))
-        # For root="/", clean is already absolute; for root="/sdcard",
-        # clean starts with "/" so os.path.join works correctly
-        full = os.path.join(root, clean.lstrip("/"))
-        real = os.path.realpath(full)
-        # Check traversal: real must be root_real itself or a child of it.
+        # Normalise the incoming virtual path to an absolute, cleaned form.
+        clean = os.path.normpath("/" + (path or "").lstrip("/"))
+
         if root_real == "/":
-            # When root is "/", any absolute path is under root.
-            # root_real + "/" would be "//" which never matches descendants.
-            if real == root_real or real.startswith("/"):
-                return real
+            # Admin mode: any absolute path is under root.
+            return os.path.realpath(clean)
+
+        # Accept both "/foo" (relative to root) and "/sdcard/foo" (already
+        # prefixed) without producing "/sdcard/sdcard/foo".
+        if clean == root_real or clean.startswith(root_real + os.sep):
+            candidate = clean
         else:
-            if real == root_real or real.startswith(root_real + "/"):
-                return real
+            candidate = os.path.join(root_real, clean.lstrip("/"))
+        real = os.path.realpath(candidate)
+        # Traversal guard: real must be root_real itself or a child of it.
+        if _under_root(root_real, real):
+            return real
         return None
 
     def _handle_upload(self):
@@ -1607,20 +1938,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
         ctype = self.headers.get("Content-Type", "")
         if "multipart/form-data" not in ctype:
             return self._json_error(400, "Expected multipart/form-data")
-        length = int(self.headers.get("Content-Length", 0))
+        length = _content_length(self)
+        if length is None:
+            return self._json_error(411, "Content-Length required")
         if length > 104857600:  # 100 MB limit
             return self._json_error(413, "File too large (max 100 MB)")
         boundary = ctype.split("boundary=")[-1].strip().strip('"').encode()
+        if not boundary:
+            return self._json_error(400, "Missing multipart boundary")
         data = self.rfile.read(length)
 
         # RFC 2046: boundaries are preceded by \r\n (or start of data)
         # and followed by \r\n or --\r\n
-        end_marker = b"--" + boundary + b"--"
         delimiter = b"\r\n--" + boundary
 
-        target_path = "/"
-        files_uploaded = []
-
+        # Pass 1: split the body into (headers, body) parts.
+        parts = []
         # Find first boundary (may be at start without leading \r\n)
         start = data.find(b"--" + boundary)
         if start == -1:
@@ -1641,8 +1974,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if next_pos == -1:
                 # No more parts
                 break
-            body = data[body_start:next_pos]
+            parts.append((headers_block, data[body_start:next_pos]))
 
+            # Move past the delimiter and its trailing \r\n
+            pos = next_pos + len(delimiter)
+            if data[pos:pos+2] == b"\r\n":
+                pos += 2
+            elif data[pos:pos+4] == b"--\r\n" or data[pos:pos+3] == b"--":
+                break
+
+        # Pass 2: locate fields and files. The `path` field is resolved first
+        # so uploads work no matter which order the client sends the parts in.
+        target_path = "/"
+        files = []
+        for headers_block, body in parts:
             is_file = False
             is_path = False
             filename = None
@@ -1660,44 +2005,51 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if is_path:
                 target_path = body.decode("utf-8", errors="replace").strip()
             elif is_file and filename:
-                fn = os.path.basename(filename)
-                dest_dir = self._resolve(target_path or "/")
-                if not dest_dir:
-                    return self._json_error(403, "Path not allowed")
-                dest = os.path.join(dest_dir, fn)
-                if not os.path.realpath(dest).startswith(os.path.realpath(self._get_root())):
-                    return self._json_error(403, "Path not allowed")
-                try:
-                    if self._is_admin():
-                        qdest_dir = shlex.quote(dest_dir)
-                        qdest = shlex.quote(dest)
-                        code, _, stderr = self._su_exec(
-                            'mkdir -p ' + qdest_dir + ' && cat > ' + qdest,
-                            input_data=body, timeout=60)
-                        if code != 0:
-                            raise OSError(stderr.decode(errors='replace'))
-                    else:
-                        os.makedirs(dest_dir, exist_ok=True)
-                        with open(dest, "wb") as f:
-                            f.write(body)
-                except Exception:
-                    continue
-                files_uploaded.append({"name": fn, "ok": True})
+                files.append((filename, body))
 
-            # Move past the delimiter and its trailing \r\n
-            pos = next_pos + len(delimiter)
-            if data[pos:pos+2] == b"\r\n":
-                pos += 2
-            elif data[pos:pos+4] == b"--\r\n" or data[pos:pos+3] == b"--":
-                break
+        dest_dir = self._resolve(target_path or "/")
+        if not dest_dir:
+            return self._json_error(403, "Path not allowed")
+
+        # Pass 3: write the uploaded files.
+        files_uploaded = []
+        for filename, body in files:
+            fn = os.path.basename(filename).replace("\x00", "")
+            if not fn or fn in (".", ".."):
+                continue
+            dest = os.path.join(dest_dir, fn)
+            if not _under_root(os.path.realpath(self._get_root()),
+                               os.path.realpath(dest)):
+                return self._json_error(403, "Path not allowed")
+            try:
+                if self._is_admin():
+                    qdest_dir = shlex.quote(dest_dir)
+                    qdest = shlex.quote(dest)
+                    code, _, stderr = self._su_exec(
+                        'mkdir -p ' + qdest_dir + ' && cat > ' + qdest,
+                        input_data=body, timeout=60)
+                    if code != 0:
+                        raise OSError(stderr.decode(errors='replace'))
+                else:
+                    os.makedirs(dest_dir, exist_ok=True)
+                    with open(dest, "wb") as f:
+                        f.write(body)
+            except Exception as e:
+                files_uploaded.append({
+                    "name": fn, "ok": False, "error": str(e) or "write failed",
+                })
+                continue
+            files_uploaded.append({"name": fn, "ok": True})
 
         self._json_response(200, {"ok": True, "files": files_uploaded})
 
     def _json_response(self, code, data):
         body = json.dumps(data).encode()
         self.send_response(code)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(body)
 
@@ -1740,6 +2092,15 @@ def get_hotspot_ip():
     return None, None
 
 
+class _ThreadingHTTPServer(http.server.ThreadingHTTPServer):
+    """Threaded server so one slow transfer cannot block every other client."""
+
+    daemon_threads = True
+    allow_reuse_address = True
+    # Class attribute: applied during server_bind(), i.e. before listen().
+    request_queue_size = 64
+
+
 def main():
     iface, ip = get_hotspot_ip()
     if HOST not in ("0.0.0.0", ""):
@@ -1756,30 +2117,74 @@ def main():
     # ── Heartbeat daemon ──────────────────────────────────────────────────
     # Writes epoch timestamp to disk every 10 s. The WebUI detects
     # server liveness by checking how fresh this file is — no pgrep needed.
-    import threading
-    HBT_FILE = "/data/local/webserver/.heartbeat"
-    os.makedirs(os.path.dirname(HBT_FILE), exist_ok=True)
+    # The heartbeat is only a convenience for the WebUI. Standalone no-root
+    # runs cannot write under /data, so degrade gracefully instead of crashing.
+    hbt_file = None
+    try:
+        os.makedirs("/data/local/webserver", exist_ok=True)
+        hbt_file = "/data/local/webserver/.heartbeat"
+    except OSError:
+        print("[*] Heartbeat file unavailable (running without root) — continuing")
 
-    def _heartbeat():
-        import time as _time
-        while True:
-            try:
-                with open(HBT_FILE, "w") as f:
-                    f.write(str(int(_time.time())))
-            except Exception:
-                pass
-            _time.sleep(10)
+    if hbt_file:
+        def _heartbeat():
+            while True:
+                try:
+                    with open(hbt_file, "w") as f:
+                        f.write(str(int(time.time())))
+                except Exception:
+                    pass
+                time.sleep(10)
 
-    threading.Thread(target=_heartbeat, daemon=True).start()
+        threading.Thread(target=_heartbeat, daemon=True).start()
 
-    server = http.server.HTTPServer((HOST, PORT), Handler)
-    server.request_queue_size = 16
-    print("[*] Serving /sdcard on port %d — press Ctrl+C to stop" % PORT)
+    try:
+        server = _ThreadingHTTPServer((HOST, PORT), Handler)
+    except OSError as e:
+        print("[✗] Cannot listen on %s:%d — %s" % (HOST, PORT, e))
+        print("    Another server may already be using this port. "
+              "Run stop.sh first, or set PORT to a free port.")
+        sys.exit(1)
+
+    # Runtime facts the WebUI / action.sh can always read from disk. The bind
+    # address is written here (not only to stdout) because the caller's shell
+    # may be torn down right after start, and because log level "off" would
+    # otherwise leave no way to discover the address.
+    try:
+        os.makedirs("/data/local/webserver", exist_ok=True)
+        with open("/data/local/webserver/.server_pid", "w") as f:
+            f.write(str(os.getpid()))
+        with open("/data/local/webserver/status", "w") as f:
+            f.write("PID=%d\n" % os.getpid())
+            f.write("HOST=%s\n" % HOST)
+            f.write("PORT=%d\n" % PORT)
+            f.write("IFACE=%s\n" % (iface or ""))
+            f.write("IP=%s\n" % (ip or ""))
+            f.write("ROOT=%s\n" % ROOT)
+            f.write("LOG_LEVEL=%s\n" % LOG_LEVEL)
+            f.write("STARTED=%d\n" % int(time.time()))
+    except OSError as e:
+        print("[*] Could not write runtime status file: %s" % e)
+
+    def _terminate(signum, frame):
+        # Raising here unwinds out of serve_forever() in the main thread, which
+        # lets the shutdown path below run without deadlocking.
+        raise KeyboardInterrupt
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _terminate)
+        except (ValueError, OSError):
+            pass
+
+    print("[*] Serving %s on port %d — press Ctrl+C to stop" % (ROOT, PORT))
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\n[*] Shutting down")
+    finally:
         server.shutdown()
+        server.server_close()
 
 
 if __name__ == "__main__":

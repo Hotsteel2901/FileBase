@@ -32,7 +32,7 @@ elif [ -f /data/adb/apd/util_functions.sh ]; then
 fi
 
 # Determine root solution
-if [ "$IS_MAGISK" = true ] || [ "$MAGISK_VER_CODE" -gt 0 ] 2>/dev/null; then
+if [ -n "$MAGISK_VER_CODE" ] && [ "$MAGISK_VER_CODE" -gt 0 ] 2>/dev/null; then
     ROOT_ENV="Magisk"
 elif [ -n "$KSU" ]; then
     ROOT_ENV="KernelSU"
@@ -43,7 +43,7 @@ else
 fi
 
 ui_print "──────────────────────────────────────"
-ui_print "  FileBase v2.0.2"
+ui_print "  FileBase"
 ui_print "  Root: $ROOT_ENV"
 ui_print "──────────────────────────────────────"
 
@@ -69,12 +69,17 @@ if [ $? -ne 0 ]; then
     unzip -o "$ZIPFILE" -d "$MODPATH" >/dev/null 2>&1
 fi
 
+# Report the version straight from module.prop so it cannot drift from the
+# value the root manager displays.
+MOD_VERSION=$(sed -n 's/^version=//p' "$MODPATH/module.prop" 2>/dev/null | head -n 1 | tr -d '\r')
+[ -n "$MOD_VERSION" ] && ui_print "  Version: $MOD_VERSION"
+
 # Set permissions
 find "$MODPATH" -type f -exec chmod 644 {} \; 2>/dev/null
 find "$MODPATH" -type d -exec chmod 755 {} \; 2>/dev/null
 
 # Executable files
-for f in customize.sh action.sh service.sh uninstall.sh common/launch.sh common/stop.sh; do
+for f in customize.sh action.sh uninstall.sh common/launch.sh common/stop.sh; do
     [ -f "$MODPATH/$f" ] && chmod 755 "$MODPATH/$f" 2>/dev/null
 done
 
@@ -111,9 +116,9 @@ fi
 
 ui_print "  ✓ FileBase installed successfully"
 ui_print ""
-ui_print "  The module will auto-start on boot."
-ui_print "  Use the Action button in your root"
-ui_print "  manager to control the server."
+ui_print "  The server does NOT auto-start on boot."
+ui_print "  Use the Action button, the WebUI, or:"
+ui_print "    sh ${MODPATH}/action.sh start"
 ui_print "──────────────────────────────────────"
 
 exit 0

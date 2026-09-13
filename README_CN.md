@@ -12,20 +12,21 @@
 |------|------|
 | **浏览** | 目录列表 + 可排序列（名称/大小/日期）+ 面包屑导航 + 实时搜索过滤 |
 | **上传** | 按钮多选上传、拖放上传带进度条、二进制安全 multipart 解析 |
-| **下载** | 单击下载 + 正确 MIME 类型 + RFC 5987 UTF-8 文件名编码 |
+| **下载** | 单击下载 + 正确 MIME 类型 + RFC 5987 UTF-8 文件名编码 + HTTP Range（支持断点续传 / 视频拖动） |
 | **编辑** | 全屏等宽代码编辑器，保存后直接写回服务器（二进制文件受保护，不会被误编辑） |
 | **管理** | 新建文件/文件夹、重命名、删除（带确认弹窗） |
-| **国际化** | 中文 / English 切换 + localStorage 持久化；新用户默认英文；唯一用户标识 |
+| **国际化** | 中文 / English 切换 + localStorage 持久化；首次访问跟随浏览器语言（无法识别时默认英文）；唯一用户标识 |
 | **主题** | 深色 / 浅色模式，自动跟随系统 `prefers-color-scheme`，手动切换可记忆 |
 | **响应式** | 桌面端表格布局 → 700px 断点切换移动端卡片布局 |
 | **安全** | 路径穿越防护、POST 大小限制（上传/写入 100 MB，元数据 64 KB）、data-* 事件委托（无内联 onclick）、POST 请求跨域防护 |
+| **并发** | 多线程处理请求，一个大文件上传/下载不再阻塞其他客户端 |
 
 ## 发布文件
 
 | 文件 | 用途 |
 |------|------|
 | `dist/webserver.tar.gz` | 独立版：`server.py` + `launch.sh` + `stop.sh` + README |
-| `dist/filebase-v2.0.3.zip` | Magisk / KernelSU / APatch 卡刷模块（含 WebUI 面板 + 日志管理） |
+| `dist/filebase-v4.0.0.zip` | Magisk / KernelSU / APatch 卡刷模块（含 WebUI 面板 + 日志管理） |
 
 ## 环境要求
 
@@ -90,13 +91,14 @@ python3 /data/local/tmp/server.py
 
 ## Magisk / KernelSU / APatch 模块
 
-模块提供**持久化系统级安装**，支持开机自启、Root 管理器内一键控制、可选的图形 WebUI 面板。
+模块提供**持久化系统级安装**，支持 Root 管理器内一键控制、可选的图形 WebUI 面板。**服务器不会开机自启**——由你显式启动/停止（Action 按钮、WebUI 或终端命令）。这样也避免了"开机时热点还没起来、随机 IP 配置失败"的老问题。
 
 ### 安装
 
-1. 下载 `dist/filebase-v2.0.3.zip`
+1. 下载 `dist/filebase-v4.0.0.zip`
 2. Root 管理器 → 模块 → 从本地安装 → 选择 zip
-3. 无需重启——安装后即可使用 **Action** 按钮
+3. **需要重启一次。** KernelSU/Magisk 会把新模块先放在 `modules_update/`，重启时才合并生效，所以重启前 `action.sh` 和 `webroot/` 都还不存在——此时 WebUI 会被拒绝打开，Action 按钮也会失败。
+4. 重启后再使用 **Action** 按钮或打开 WebUI
 
 **支持管理器：** Magisk 28.0+、KernelSU 1.0.2+、APatch（最新版）
 
@@ -105,7 +107,7 @@ python3 /data/local/tmp/server.py
 | 方式 | 操作 |
 |------|------|
 | **Action 按钮** | Root 管理器模块列表点"Action" → 执行 `action.sh`（start/stop/restart/status/log） |
-| **WebUI 面板** | 需安装 [KSUWebUIStandalone](https://github.com/5ec1cff/KsuWebUIStandalone) 或 [MMRL](https://github.com/MMRLApp/MMRL) → 图形按钮 + 实时状态 + 日志级别选择 |
+| **WebUI 面板** | 在 KernelSU 管理器模块页直接打开（管理器会用 WebView 渲染 `webroot/`）；Magisk / APatch 需 [KSUWebUIStandalone](https://github.com/5ec1cff/KsuWebUIStandalone) 或 [MMRL](https://github.com/MMRLApp/MMRL) |
 | **终端** | `su -c 'sh /data/adb/modules/filebase/action.sh start'` |
 
 ### action.sh 命令
@@ -115,15 +117,49 @@ sh action.sh start          启动服务器（自动检测热点、随机 IP、i
 sh action.sh stop           停止服务器 + 清理 IP 别名 + iptables
 sh action.sh restart        重启
 sh action.sh status         查看状态（PID、绑定 IP、网卡、日志级别、连通性）
+sh action.sh info           机器可读的 KEY=VALUE 状态（WebUI 使用）
 sh action.sh log [N]        查看最后 N 行日志（默认 50）
+sh action.sh loglevel [级别]  读取（不带参数）或设置日志级别
 ```
 
 ### WebUI 功能
 
-- **启动 / 停止 / 重启** 按钮（带超时保护）
-- **实时状态**：PID、绑定 IP、网卡、日志级别
-- **日志级别选择**：`Info` · `Error` · `Debug` · `Off` — 自动保存到 `logs/.config`
-- **中英切换**：localStorage 记忆
+面板严格按 KernelSU 的[模块 WebUI 指南](https://kernelsu.org/zh_CN/guide/module-webui.html)编写：
+
+- **入口** 是 `webroot/index.html`，CSS/JS 与它同级；权限与 SELinux context
+  按指南交给 KernelSU 处理，模块自己不设置。
+- **Shell 交互使用官方 `kernelsu` 库**：
+  `const { errno, stdout, stderr } = await exec(cmd)`。该库以 `webroot/kernelsu.js`
+  原样内置（Apache-2.0），因此无需打包器即可 `import`。此前使用的同步
+  `ksu.exec(cmd)` 字符串写法**不是**指南里的接口，换 WebUI 宿主就会失效。
+- **模块目录来自 `moduleInfo()`**，不再写死路径。
+- **原生 Toast** 使用库提供的 `toast()`。
+- **启动 / 停止 / 重启** 按钮带超时保护。
+- **实时状态**（PID、地址、网卡、日志级别）来自 `action.sh info` 这个稳定的
+  `KEY=VALUE` 契约，而不是去解析给人看的文本。
+- **日志级别选择**：`Info` · `Error` · `Debug` · `Off`。
+- **中英切换**：首次访问跟随浏览器语言。
+- **控制台显示完整输出**。KernelSU 执行 `exec()` 用的是临时 root shell，
+  命令返回后该 shell 就被销毁，所以命令的 stdout 可能为空或被截断（用
+  `cmd &` 起的服务也会跟着一起被杀）。因此 FileBase 用 `setsid` 启动服务，
+  并让 `action.sh` 把完整输出落盘到 `logs/action.log`，WebUI 再把这个文件
+  读回来显示；启动/重启后还会附上 `logs/server.log`，里面有绑定地址和
+  Python 报错。
+- **地址始终可查**。服务端会把 `PID/HOST/PORT/IFACE/IP` 写进运行时状态文件，
+  因此即使监听在 `0.0.0.0` 或日志级别为 `off`，面板也能显示访问地址。
+
+### 日志级别保存在哪里
+
+按[模块配置指南](https://kernelsu.org/zh_CN/guide/module-config.html)，该值通过
+KernelSU 的模块配置系统持久化：
+
+```sh
+ksud module config set log_level debug     # action.sh 会自动设置 KSU_MODULE
+```
+
+在 Magisk / APatch 上（没有 `ksud`）回退到 `logs/.config`。`action.sh` 读取时
+优先 ksud 配置、其次文件；每次修改都会同时写入两处，因此在 KernelSU 上卸载
+管理器也不会丢失，在其他管理器上同样可用。
 
 ### 日志级别
 
@@ -134,7 +170,18 @@ sh action.sh log [N]        查看最后 N 行日志（默认 50）
 | `debug` | 时间戳、IP:端口、方法、完整路径 |
 | `off` | 不输出日志（stdout → /dev/null） |
 
-日志文件：`<模块目录>/logs/server.log`。可通过 WebUI 下拉菜单或直接写入 `logs/.config` 配置。
+日志文件：`<模块目录>/logs/server.log`。可通过 WebUI 下拉菜单、`sh action.sh loglevel <级别>` 或 `ksud module config set log_level <级别>` 设置（见上文）。新的日志级别在服务器**下次启动**时生效——想立即应用请在 WebUI 中点「重启」。
+
+### 自行构建刷入包
+
+```bash
+sh "Magisk Module/build.sh"
+```
+
+脚本会先把仓库根目录的 `server.py` / `launch.sh` / `stop.sh` 同步到
+`Magisk Module/common/`，再生成 `dist/filebase-<版本>.zip` 与全新的
+`dist/webserver.tar.gz`。GitHub Release 流程使用同一个脚本，因此发布包
+不会夹带旧版 server。
 
 ---
 
@@ -145,15 +192,20 @@ sh action.sh log [N]        查看最后 N 行日志（默认 50）
 | 方法 | 端点 | 说明 |
 |------|------|------|
 | `GET` | `/api/list?path=<路径>` | 列出目录内容 |
-| `GET` | `/api/download?path=<路径>` | 下载文件（RFC 5987 UTF-8 文件名） |
+| `GET` | `/api/download?path=<路径>` | 下载文件（RFC 5987 文件名，支持 HTTP `Range`） |
 | `POST` | `/api/upload` | 上传文件 — `multipart/form-data` |
-| `POST` | `/api/write` | 创建/覆盖文件 — JSON `{path, content}` |
+| `POST` | `/api/write` | 创建/覆盖文件 — JSON `{path, content, overwrite?}`（`overwrite:false` 时若已存在返回 409） |
 | `POST` | `/api/delete` | 删除文件或目录 — JSON `{path}` |
 | `POST` | `/api/mkdir` | 创建目录 — JSON `{path}` |
 | `POST` | `/api/rename` | 重命名/移动 — JSON `{oldPath, newPath}` |
 | `POST` | `/api/login` | 管理员登录 — JSON `{user, pass}` → `{ok, token}` |
 | `POST` | `/api/logout` | 管理员注销 — 作废 token |
 | `GET` | `/api/auth` | 检查管理员认证状态 → `{admin: bool}` |
+
+下载支持单段 `Range: bytes=...` 请求（返回 206 部分内容，越界返回 416），
+因此大文件可以断点续传。管理员通常使用 `Bearer` 请求头认证；浏览器原生
+下载（`<a download>`）无法发送请求头，可改为在 URL 后附加
+`&token=<token>`。
 
 ### 返回格式
 
@@ -187,26 +239,27 @@ magisk_module/                 Magisk/KSU/APatch 模块源码
 ├── module.prop                多 root 元数据（ksu=1, sufs=1）
 ├── customize.sh               安装脚本
 ├── action.sh                  控制入口（启动/停止/状态/日志）
-├── service.sh                 开机自启
 ├── uninstall.sh               卸载清理
 ├── common/                    服务器文件 → 安装时复制到模块根目录
 │   ├── server.py
 │   ├── launch.sh
 │   └── stop.sh
 ├── webroot/
-│   └── index.html             WebUI 控制面板
+│   ├── index.html             WebUI 入口（指南要求）
+│   ├── script.js               WebUI 逻辑（ES 模块，import kernelsu.js）
+│   ├── kernelsu.js            KernelSU 官方 WebUI 库（原样内置）
+│   └── style.css              WebUI 样式
 ├── META-INF/                  卡刷兼容
-├── build.sh                   一键构建 zip
-└── filebase-v2.0.3.zip        已构建的刷入包
+└── build.sh                   一键构建 zip + 独立版 tar.gz
 
 dist/                          发布归档
 ├── webserver.tar.gz           独立版
-└── filebase-v2.0.3.zip        卡刷模块
+└── filebase-v4.0.0.zip        卡刷模块
 ```
 
 ### 前端设计
 
-- **字体**：Bebas Neue（品牌标题）、Figtree（UI 正文）、JetBrains Mono（代码/数据）
+- **字体**：使用系统字体，不请求外部网络字体（Bebas Neue / Figtree / JetBrains Mono 仅在本地已安装时生效，因此完全离线可用）
 - **主题**：CSS 自定义属性 + `[data-theme="dark"]` / `[data-theme="light"]`
 - **国际化**：`data-i18n` 属性模板驱动，`localStorage` 持久化
 - **安全**：文件操作使用 `data-*` 属性 + 事件委托，无内联 `onclick`
@@ -258,6 +311,17 @@ FileBase 内置隐藏的超级管理员模式，可管理安卓手机的整个�
 | 模块 WebUI 点击启动卡住 | 已修复——命令后台执行 + 15 秒超时保护 |
 | 客户端无法访问 | 确认客户端连接的是手机热点 Wi‑Fi 而非移动数据 |
 | `grep: Unknown option` | 已修复——Android busybox 环境改用 `sed` |
+| `error` 日志级别没有任何输出 | 已修复——4xx/5xx 过滤现在能正确解析状态码 |
+| 管理员无法下载 `/data` 下的文件 | 已修复——管理员下载会携带 token，大文件改为流式传输 |
+| 一个大文件下载会卡死整个页面 | 已修复——服务器改为多线程 |
+| 大文件无法断点续传 | 已修复——已支持 HTTP Range |
+| WebUI 显示「API 不可用」 | 页面没有在 WebUI 宿主的 WebView 中打开——请从 KernelSU 管理器模块页进入（Magisk/APatch 用 KSUWebUIStandalone / MMRL）；页面上会显示终端备用命令 |
+| WebUI 按钮没有反应 | 面板依赖 `kernelsu` WebUI 桥接；请确认模块已启用，且安装后重启过 |
+| 刚安装完 Action 按钮 / WebUI 打不开 | 需要先重启一次。新模块会先放在 `modules_update/`，重启时才合并，重启前 `action.sh` 和 `webroot/` 都还不存在 |
+| 需要安装 metamodule 吗？ | 不需要。FileBase 从不修改 `/system`，因此 KernelSU 对「挂载 system/ 目录」才要求的 metamodule 并不适用 |
+| 没有日志 / 找不到 IP 和端口 | 看 `logs/action.log`（上一条命令的完整输出）和 `logs/server.log`（服务端自身输出），WebUI 控制台两者都会显示；运行时状态文件里也始终记录着地址 |
+| 切换日志级别好像没反应 | 新级别在服务器**下次启动**时生效——点「重启」（或 `action.sh restart`）。级别为 `off` 时 `logs/server.log` 会被清空 |
+| 从面板启动后服务立刻消失 | 已修复——服务用 `setsid` 启动，能脱离管理器临时 root shell 存活 |
 
 ## 许可证
 

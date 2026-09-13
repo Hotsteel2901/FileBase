@@ -3,7 +3,6 @@
 # Universal installer script
 ui_print(" ");
 ui_print("  FileBase — Android File Server");
-ui_print("  v2.0.0");
 ui_print(" ");
 ui_print("  Supports: Magisk, KernelSU, APatch");
 ui_print(" ");

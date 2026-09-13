@@ -2,148 +2,119 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>FileBase Control</title>
-<link rel="stylesheet" href="style.css" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+<title>FileBase</title>
+<link rel="stylesheet" href="./style.css">
 </head>
 <body>
 
-<!-- ═══ TOAST OVERLAY ════════════════════════════════════════════════════ -->
-<div id="toast-overlay" class="toast-overlay hidden">
-  <div id="toast-card" class="toast-card">
-    <div id="toast-title" class="toast-title"></div>
-    <div id="toast-message" class="toast-message"></div>
-    <div class="toast-actions">
-      <button id="toast-secondary" class="secondary-btn hidden">Secondary</button>
-      <button id="toast-tertiary" class="secondary-btn hidden">Tertiary</button>
-      <button id="toast-ok" class="primary-btn">OK</button>
-    </div>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">&#9883;</span>
+    <span class="brand-text">FileBase</span>
   </div>
-</div>
+  <div class="topbar-actions">
+    <span id="apiBadge" class="badge badge-muted">&#8230;</span>
+    <button id="langBtn" class="ghost-btn" type="button">中文</button>
+  </div>
+</header>
 
-<!-- ═══ PAGE: CONTROL ════════════════════════════════════════════════════ -->
-<div id="page-control" class="page">
-  <div class="container page-with-bottom-nav">
-    <h1><span>&#9883;</span> FileBase</h1>
-    <p class="module-version" data-i18n="subtitle">Android File Server — Control Panel</p>
-    <div class="lang-switch" id="langBtn">EN / 中文</div>
+<main>
 
-    <div class="diag" id="diag">Checking exec API...</div>
-
-    <!-- Controls Card -->
-    <div class="info-card">
-      <div class="card-header"><h3 data-i18n="controls">Controls</h3></div>
-      <div class="controls-row" style="margin-bottom:8px">
-        <button class="btn-start" id="btnStart">&#9654; <span data-i18n="startBtn">Start</span></button>
-        <button class="btn-stop" id="btnStop">&#9632; <span data-i18n="stopBtn">Stop</span></button>
+  <!-- ═══ CONTROL ═══════════════════════════════════════════════════════ -->
+  <section id="page-control" class="page">
+    <div class="card">
+      <div class="status-head">
+        <span id="statusDot" class="dot dot-idle" aria-hidden="true"></span>
+        <span id="statusText" class="status-text" data-i18n="statusChecking">Checking…</span>
       </div>
-      <div class="controls-row">
-        <button class="secondary-btn" id="btnRestart">&#8635; <span data-i18n="restartBtn">Restart</span></button>
-        <button class="secondary-btn" id="btnRefresh">&#8635; <span data-i18n="refreshBtn">Refresh</span></button>
+      <dl class="kv">
+        <div class="kv-item"><dt data-i18n="kPid">PID</dt><dd id="vPid">—</dd></div>
+        <div class="kv-item"><dt data-i18n="kAddress">Address</dt><dd id="vAddr">—</dd></div>
+        <div class="kv-item"><dt data-i18n="kIface">Interface</dt><dd id="vIface">—</dd></div>
+        <div class="kv-item"><dt data-i18n="kLogLevel">Log level</dt><dd id="vLogLevel">—</dd></div>
+      </dl>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="controls">Controls</h2>
+      <div class="btn-row">
+        <button id="btnStart" class="btn btn-primary" type="button">
+          <span aria-hidden="true">&#9654;</span> <span data-i18n="startBtn">Start</span>
+        </button>
+        <button id="btnStop" class="btn btn-danger" type="button">
+          <span aria-hidden="true">&#9632;</span> <span data-i18n="stopBtn">Stop</span>
+        </button>
+        <button id="btnRestart" class="btn" type="button">
+          <span aria-hidden="true">&#8635;</span> <span data-i18n="restartBtn">Restart</span>
+        </button>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:10px">
-        <span data-i18n="logLevelLabel">Log Level:</span>
+
+      <label class="field" for="logLevelSel">
+        <span data-i18n="logLevel">Log level</span>
         <select id="logLevelSel">
-          <option value="info">Info (brief)</option>
-          <option value="error">Error (errors only)</option>
-          <option value="debug">Debug (full details)</option>
-          <option value="off">Off (disabled)</option>
+          <option value="info" data-i18n="lvlInfo">Info — requests + status</option>
+          <option value="error" data-i18n="lvlError">Error — 4xx/5xx only</option>
+          <option value="debug" data-i18n="lvlDebug">Debug — full details</option>
+          <option value="off" data-i18n="lvlOff">Off — no logging</option>
         </select>
+      </label>
+      <p class="hint" data-i18n="logLevelHint">Saved through KernelSU's module config system; restart the server to apply.</p>
+
+      <h3 data-i18n="output">Output</h3>
+      <pre id="output" class="console">—</pre>
+    </div>
+
+    <div id="fallbackCard" class="card hidden">
+      <h2 data-i18n="fallbackTitle">WebUI API unavailable</h2>
+      <p class="hint" data-i18n="fallbackText">This page must be opened from the KernelSU Manager (or another WebUI host). You can still control the module from a terminal:</p>
+      <pre id="fallbackCmd" class="console"></pre>
+    </div>
+  </section>
+
+  <!-- ═══ LOGS ══════════════════════════════════════════════════════════ -->
+  <section id="page-logs" class="page hidden">
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="logsTitle">Server logs</h2>
+        <button id="btnRefreshLogs" class="btn btn-small" type="button">
+          <span aria-hidden="true">&#8635;</span> <span data-i18n="refreshBtn">Refresh</span>
+        </button>
       </div>
+      <p class="hint" data-i18n="logsHint">Last 120 lines of logs/server.log</p>
+      <pre id="logView" class="console">—</pre>
     </div>
+  </section>
 
-    <!-- Console Output -->
-    <div class="console-box">
-      <div class="console-title" data-i18n="output">Console Output</div>
-      <pre id="console">—</pre>
+  <!-- ═══ ABOUT ═════════════════════════════════════════════════════════ -->
+  <section id="page-about" class="page hidden">
+    <div class="card">
+      <h2 data-i18n="aboutTitle">About</h2>
+      <div id="aboutBody" class="about"></div>
     </div>
+  </section>
 
-    <!-- CLI Fallback -->
-    <div class="info-card" id="cliFallback" style="display:none">
-      <div class="card-header"><h3 data-i18n="cliFallbackTitle">CLI Fallback</h3></div>
-      <p style="font-size:11px;color:var(--text-muted);margin-bottom:6px" data-i18n="cliFallbackText">WebUI exec API is not available. Use terminal instead:</p>
-      <div class="console-box">
-        <pre>su -c 'sh /data/adb/modules/filebase/action.sh start'
-su -c 'sh /data/adb/modules/filebase/action.sh status'</pre>
-      </div>
-    </div>
-  </div>
-</div>
+</main>
 
-<!-- ═══ PAGE: LOGS ═══════════════════════════════════════════════════════ -->
-<div id="page-logs" class="page" style="display:none;">
-  <div class="container page-with-bottom-nav">
-    <h1><span>&#9883;</span> FileBase</h1>
-    <p class="module-version" data-i18n="logsTitle">Server Logs</p>
-    <div class="lang-switch" id="langBtn2">EN / 中文</div>
-
-    <div class="controls-row">
-      <button class="secondary-btn" id="btnRefreshLogs">&#8635; <span data-i18n="refreshBtn">Refresh</span></button>
-    </div>
-
-    <div class="console-box">
-      <div class="console-title" data-i18n="logHint">Last 80 lines of server log:</div>
-      <pre id="logConsole">—</pre>
-    </div>
-  </div>
-</div>
-
-<!-- ═══ PAGE: ABOUT ══════════════════════════════════════════════════════ -->
-<div id="page-about" class="page" style="display:none;">
-  <div class="container page-with-bottom-nav">
-    <h1><span>&#9883;</span> FileBase</h1>
-    <p class="module-version" data-i18n="aboutTitle">About / Help</p>
-
-    <div class="manual-card guide-card">
-      <h2>FileBase — Android File Server</h2>
-      <div class="manual-text">
-        <p>Serve <code>/sdcard</code> over hotspot LAN. Browse, upload, download, edit files from any connected device.</p>
-
-        <h3>Quick Start</h3>
-        <ol>
-          <li>Install this module via Magisk / KernelSU / APatch.</li>
-          <li>Open the WebUI from your root manager.</li>
-          <li>Tap <b>Start</b> to launch the server.</li>
-          <li>Connect to the displayed IP from another device.</li>
-        </ol>
-
-        <h3>CLI Commands</h3>
-        <ul>
-          <li><code id="copy-start">su -c 'sh /data/adb/modules/filebase/action.sh start'</code></li>
-          <li><code id="copy-stop">su -c 'sh /data/adb/modules/filebase/action.sh stop'</code></li>
-          <li><code id="copy-status">su -c 'sh /data/adb/modules/filebase/action.sh status'</code></li>
-        </ul>
-
-        <h3>Log Levels</h3>
-        <ul>
-          <li><b>Info</b> — Client IP + HTTP method + status code</li>
-          <li><b>Error</b> — Only 4xx / 5xx responses</li>
-          <li><b>Debug</b> — Timestamp, IP:port, method, full path</li>
-          <li><b>Off</b> — No log file</li>
-        </ul>
-
-        <p><b>License:</b> MIT</p>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ═══ BOTTOM NAV ═══════════════════════════════════════════════════════ -->
-<nav class="bottom-nav">
-  <button id="nav-control" class="bottom-nav-item active" type="button">
-    <span class="bottom-nav-icon">⚡</span>
-    <span class="bottom-nav-label" data-i18n="navControl">Control</span>
+<nav class="tabbar">
+  <button id="tab-control" class="tab is-active" type="button" data-page="control">
+    <span class="tab-icon" aria-hidden="true">&#9889;</span>
+    <span class="tab-label" data-i18n="navControl">Control</span>
   </button>
-  <button id="nav-logs" class="bottom-nav-item" type="button">
-    <span class="bottom-nav-icon">📋</span>
-    <span class="bottom-nav-label" data-i18n="navLogs">Logs</span>
+  <button id="tab-logs" class="tab" type="button" data-page="logs">
+    <span class="tab-icon" aria-hidden="true">&#128203;</span>
+    <span class="tab-label" data-i18n="navLogs">Logs</span>
   </button>
-  <button id="nav-about" class="bottom-nav-item" type="button">
-    <span class="bottom-nav-icon">ℹ️</span>
-    <span class="bottom-nav-label" data-i18n="navAbout">About</span>
+  <button id="tab-about" class="tab" type="button" data-page="about">
+    <span class="tab-icon" aria-hidden="true">&#8505;</span>
+    <span class="tab-label" data-i18n="navAbout">About</span>
   </button>
 </nav>
 
-<script src="script.js"></script>
+<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+<!-- KernelSU module guide: entry is webroot/index.html; script.js is an ES
+     module importing the official "kernelsu" library (vendored in webroot). -->
+<script type="module" src="./script.js"></script>
 </body>
 </html>

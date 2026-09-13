@@ -16,13 +16,13 @@ jobs:
 
       - name: Package release
         run: |
-          mkdir -p release
-          cd "Magisk Module"
-          zip -r ../release/filebase.zip . -x "*.git*" "*.DS_Store"
+          # build.sh syncs the bundled server files from the repo root first,
+          # so the release can never ship a stale copy of server.py.
+          sh "Magisk Module/build.sh"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release/filebase.zip
+          files: dist/filebase-*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

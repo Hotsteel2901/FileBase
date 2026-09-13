@@ -1,520 +1,478 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   FileBase WebUI — adapted from modern Magisk module webroot patterns
+   FileBase WebUI
+
+   Follows the KernelSU module guide (website/docs/zh_CN/guide/module-webui.md):
+     • entry point is webroot/index.html, assets live next to it
+     • shell access goes through the official `kernelsu` library:
+         const { errno, stdout, stderr } = await exec(cmd)
+       (the old synchronous `ksu.exec(cmd)` string API is NOT the documented
+        one and broke under other WebUI hosts)
+     • module settings are stored with `ksud module config` (module-config.md),
+       with a plain-file fallback for Magisk / APatch
+     • `moduleInfo()` supplies the module directory instead of hard-coding it
    ═══════════════════════════════════════════════════════════════════════ */
 
-// APatch compatibility: map window.apatch to window.ksu if needed
-if (typeof window !== "undefined" && window.apatch !== undefined && window.apatch.ksu === undefined) {
-  window.ksu = window.apatch;
-}
+import { exec, toast as nativeToast, moduleInfo } from './kernelsu.js';
 
-var MODULE_ID = "filebase";
-var MODDIR = "/data/adb/modules/" + MODULE_ID;
-var ACTION_SH = MODDIR + "/action.sh";
-var PORT = 6532;
+const $ = (id) => document.getElementById(id);
 
-// ─── i18n ───────────────────────────────────────────────────────────────
-var T = {
+/* ─── API availability (guide: the library needs the manager's ksu bridge) ─ */
+const HAS_API =
+  typeof window.ksu !== 'undefined' &&
+  typeof window.ksu.exec === 'function';
+
+/* ─── i18n ─────────────────────────────────────────────────────────────── */
+const I18N = {
   en: {
-    subtitle: "Android File Server — Control Panel",
-    status: "Server Status",
-    pid: "PID",
-    bindIp: "Bind IP",
-    iface: "Interface",
-    logLevel: "Log Level",
-    controls: "Controls",
-    startBtn: "Start",
-    stopBtn: "Stop",
-    restartBtn: "Restart",
-    refreshBtn: "Refresh",
-    logLevelLabel: "Log Level:",
-    output: "Console Output",
-    online: "Online",
-    offline: "Offline",
-    noIP: "No hotspot IP",
-    logSaved: "Log level saved",
-    noExec: "WebUI exec API not available — see CLI fallback below",
-    timeout: "Command timed out",
-    dispatched: "Command dispatched — check status below",
-    noRoot: "ksu.exec found but may lack root. Grant root access to KSUWebUIStandalone / MMRL.",
-    navControl: "Control",
-    navLogs: "Logs",
-    navAbout: "About",
-    logsTitle: "Server Logs",
-    aboutTitle: "About / Help",
-    cliFallbackTitle: "CLI Fallback",
-    cliFallbackText: "WebUI exec API is not available. Use terminal instead:",
-    welcomeTitle: "Welcome",
-    welcomeHtml:
-      "<div style='font-weight:800;margin-bottom:10px;'>👋 Welcome to FileBase</div>" +
-      "<div class='warn-text'>This panel lets you start, stop, and monitor the file server.</div>" +
-      "<div class='warn-text'>Use the <b>Control</b> tab for actions and status.</div>" +
-      "<div class='warn-text'>Use the <b>Logs</b> tab to view server output.</div>",
-    serverRunning: "Server is already running",
-    serverStarted: "Server started",
-    serverStopped: "Server stopped",
-    serverRestarted: "Server restarted",
-    checkStatusFirst: "Check status first",
-    actionRunning: "Running",
-    ready: "Ready",
-    checking: "Checking...",
-    stopped: "Stopped",
-    running: "Running",
-    failedStart: "Failed to start",
-    logHint: "Last 80 lines of server log:",
-    noLog: "No log file found.",
-    copyOk: "Copied ✓",
+    statusChecking: 'Checking…',
+    statusRunning: 'Server running',
+    statusStopped: 'Server stopped',
+    statusUnknown: 'Status unknown',
+    kPid: 'PID', kAddress: 'Address', kIface: 'Interface', kLogLevel: 'Log level',
+    controls: 'Controls',
+    startBtn: 'Start', stopBtn: 'Stop', restartBtn: 'Restart', refreshBtn: 'Refresh',
+    logLevel: 'Log level',
+    lvlInfo: 'Info — requests + status',
+    lvlError: 'Error — 4xx/5xx only',
+    lvlDebug: 'Debug — full details',
+    lvlOff: 'Off — no logging',
+    logLevelHint: "Saved through KernelSU's module config system; restart the server to apply.",
+    output: 'Output',
+    logsTitle: 'Server logs',
+    logsHint: 'Last 120 lines of logs/server.log',
+    aboutTitle: 'About',
+    navControl: 'Control', navLogs: 'Logs', navAbout: 'About',
+    fallbackTitle: 'WebUI API unavailable',
+    fallbackText: 'This page must be opened from the KernelSU Manager (or another WebUI host). You can still control the module from a terminal:',
+    busy: 'Working…',
+    failed: 'Failed',
+    started: 'Server started', stopped: 'Server stopped', restarted: 'Server restarted',
+    logSaved: 'Log level saved',
+    noLog: 'No log file yet.',
+    apiReady: 'API ready',
+    apiMissing: 'API missing',
+    copyOk: 'Copied',
+    aboutIntro: "Serves <code>/sdcard</code> over the phone's hotspot. Browse, upload, download and edit files from any device that is connected to it.",
+    aboutQuickStart: 'Quick start',
+    aboutStep1: 'Turn on the phone hotspot.',
+    aboutStep2: 'Tap <b>Start</b> here.',
+    aboutStep3: 'Open the shown address on another device.',
+    aboutStep4: 'Tap <b>Stop</b> to shut the server down.',
+    aboutCli: 'Terminal commands',
+    aboutCliHint: 'Tap a command to copy it.',
+    aboutSettings: 'Where settings are stored',
+    aboutSettingsText: 'The log level is saved with <code>ksud module config set log_level …</code> on KernelSU (see the module config guide). On Magisk / APatch it falls back to <code>logs/.config</code>. Both are read by <code>action.sh</code> on every start.',
+    aboutLogLevels: 'Log levels',
+    aboutLevelInfo: '<b>Info</b> — client IP, method, status',
+    aboutLevelError: '<b>Error</b> — only 4xx / 5xx',
+    aboutLevelDebug: '<b>Debug</b> — timestamp, IP:port, method, path',
+    aboutLevelOff: '<b>Off</b> — no log output',
+    aboutLicense: 'License: MIT',
   },
   zh: {
-    subtitle: "Android 文件服务器 — 控制面板",
-    status: "服务器状态",
-    pid: "进程号",
-    bindIp: "绑定 IP",
-    iface: "网卡",
-    logLevel: "日志级别",
-    controls: "控制",
-    startBtn: "启动",
-    stopBtn: "停止",
-    restartBtn: "重启",
-    refreshBtn: "刷新",
-    logLevelLabel: "日志级别：",
-    output: "控制台输出",
-    online: "在线",
-    offline: "离线",
-    noIP: "无热点 IP",
-    logSaved: "日志级别已保存",
-    noExec: "WebUI exec API 不可用 — 请使用下方的终端命令",
-    timeout: "命令超时",
-    dispatched: "命令已发送 — 查看下方状态",
-    noRoot: "检测到 ksu.exec 但可能缺少 root 权限。请在 KSUWebUIStandalone / MMRL 中授予 root 权限。",
-    navControl: "控制",
-    navLogs: "日志",
-    navAbout: "关于",
-    logsTitle: "服务器日志",
-    aboutTitle: "关于 / 帮助",
-    cliFallbackTitle: "终端备用方案",
-    cliFallbackText: "WebUI exec API 不可用。请使用终端命令：",
-    welcomeTitle: "欢迎使用",
-    welcomeHtml:
-      "<div style='font-weight:800;margin-bottom:10px;'>👋 欢迎使用 FileBase</div>" +
-      "<div class='warn-text'>本面板可用于启动、停止和监控文件服务器。</div>" +
-      "<div class='warn-text'>使用 <b>控制</b> 标签页执行操作和查看状态。</div>" +
-      "<div class='warn-text'>使用 <b>日志</b> 标签页查看服务器输出。</div>",
-    serverRunning: "服务器已在运行",
-    serverStarted: "服务器已启动",
-    serverStopped: "服务器已停止",
-    serverRestarted: "服务器已重启",
-    checkStatusFirst: "请先检查状态",
-    actionRunning: "执行中",
-    ready: "就绪",
-    checking: "检测中…",
-    stopped: "已停止",
-    running: "运行中",
-    failedStart: "启动失败",
-    logHint: "服务器日志最后 80 行：",
-    noLog: "未找到日志文件。",
-    copyOk: "已复制 ✓",
-  }
+    statusChecking: '检测中…',
+    statusRunning: '服务器运行中',
+    statusStopped: '服务器已停止',
+    statusUnknown: '状态未知',
+    kPid: '进程号', kAddress: '访问地址', kIface: '网卡', kLogLevel: '日志级别',
+    controls: '控制',
+    startBtn: '启动', stopBtn: '停止', restartBtn: '重启', refreshBtn: '刷新',
+    logLevel: '日志级别',
+    lvlInfo: 'Info — 记录请求与状态码',
+    lvlError: 'Error — 仅 4xx/5xx',
+    lvlDebug: 'Debug — 完整详情',
+    lvlOff: 'Off — 不输出日志',
+    logLevelHint: '通过 KernelSU 模块配置系统保存；重启服务器后生效。',
+    output: '输出',
+    logsTitle: '服务器日志',
+    logsHint: 'logs/server.log 最后 120 行',
+    aboutTitle: '关于',
+    navControl: '控制', navLogs: '日志', navAbout: '关于',
+    fallbackTitle: 'WebUI API 不可用',
+    fallbackText: '本页面需要在 KernelSU 管理器（或其他 WebUI 宿主）中打开。你仍然可以用终端控制模块：',
+    busy: '执行中…',
+    failed: '失败',
+    started: '服务器已启动', stopped: '服务器已停止', restarted: '服务器已重启',
+    logSaved: '日志级别已保存',
+    noLog: '暂无日志文件。',
+    apiReady: 'API 就绪',
+    apiMissing: 'API 不可用',
+    copyOk: '已复制',
+    aboutIntro: '通过手机热点共享 <code>/sdcard</code>，任何连接该热点的设备都能用浏览器浏览、上传、下载和编辑文件。',
+    aboutQuickStart: '快速开始',
+    aboutStep1: '打开手机热点。',
+    aboutStep2: '在这里点击 <b>启动</b>。',
+    aboutStep3: '在另一台设备上打开显示的地址。',
+    aboutStep4: '点击 <b>停止</b> 关闭服务器。',
+    aboutCli: '终端命令',
+    aboutCliHint: '点击命令即可复制。',
+    aboutSettings: '设置保存在哪里',
+    aboutSettingsText: '日志级别在 KernelSU 上通过 <code>ksud module config set log_level …</code> 保存（见模块配置指南）；在 Magisk / APatch 上回退到 <code>logs/.config</code>。这两处都会由 <code>action.sh</code> 在每次启动时读取。',
+    aboutLogLevels: '日志级别',
+    aboutLevelInfo: '<b>Info</b> — 客户端 IP、方法、状态码',
+    aboutLevelError: '<b>Error</b> — 仅 4xx / 5xx',
+    aboutLevelDebug: '<b>Debug</b> — 时间戳、IP:端口、方法、路径',
+    aboutLevelOff: '<b>Off</b> — 不输出日志',
+    aboutLicense: '许可证：MIT',
+  },
 };
 
-var LANG = (function() {
-  var s = localStorage.getItem("fb_wui_lang");
-  if (s) return s;
-  return (navigator.language || "").toLowerCase().indexOf("zh") === 0 ? "zh" : "en";
-})();
+let lang =
+  localStorage.getItem('fb_wui_lang') ||
+  ((navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en');
 
-function t(k) { return (T[LANG] && T[LANG][k]) || (T.en[k] || k); }
+const t = (key) => (I18N[lang] && I18N[lang][key]) || I18N.en[key] || key;
 
-function applyI18n() {
-  var els = document.querySelectorAll("[data-i18n]");
-  for (var i = 0; i < els.length; i++) {
-    els[i].textContent = t(els[i].getAttribute("data-i18n"));
+/* ─── Module location (guide: ask the manager, don't hard-code) ────────── */
+let MODDIR = '/data/adb/modules/filebase';
+let MODID = 'filebase';
+
+function resolveModule() {
+  try {
+    const info = JSON.parse(moduleInfo() || '{}');
+    if (info.moduleDir) MODDIR = info.moduleDir;
+    if (info.id) MODID = info.id;
+  } catch (_) {
+    /* keep the defaults */
   }
-  var btn = document.getElementById("langBtn");
-  if (btn) btn.textContent = LANG === "zh" ? "中文 / EN" : "EN / 中文";
-  var btn2 = document.getElementById("langBtn2");
-  if (btn2) btn2.textContent = LANG === "zh" ? "中文 / EN" : "EN / 中文";
+}
+
+/* ─── Shell helpers built on the documented exec() API ─────────────────── */
+const quote = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
+
+async function sh(command) {
+  // exec() resolves with { errno, stdout, stderr } and never throws for a
+  // non-zero exit status; it only rejects when the bridge itself fails.
+  const result = await exec(command);
+  return result || { errno: -1, stdout: '', stderr: '' };
+}
+
+function withTimeout(promise, ms, label) {
+  let timer = null;
+  const guard = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error((label || 'command') + ' timed out after ' + Math.round(ms / 1000) + 's')),
+      ms,
+    );
+  });
+  return Promise.race([promise, guard]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function parseKv(text) {
+  const out = {};
+  String(text || '').split(/\r?\n/).forEach((line) => {
+    const i = line.indexOf('=');
+    if (i > 0) out[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+  });
+  return out;
+}
+
+// Read a file from the module directory (optionally its last N lines).
+// KernelSU's exec() returns the captured stdout; reading a file is the
+// reliable path when a command's own output cannot be captured completely.
+async function readText(path, maxLines) {
+  try {
+    const tail = maxLines ? ' | tail -n ' + maxLines : '';
+    const { stdout } = await sh('cat ' + quote(path) + ' 2>/dev/null' + tail);
+    return stdout || '';
+  } catch (_) {
+    return '';
+  }
+}
+
+/* ─── UI helpers ───────────────────────────────────────────────────────── */
+let toastTimer = null;
+
+function showToast(message, kind) {
+  const el = $('toast');
+  el.textContent = message;
+  el.className = 'toast' + (kind ? ' toast-' + kind : '');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 4000);
+}
+
+function notify(message) {
+  showToast(message, 'ok');
+  try {
+    nativeToast(message); // manager-provided native toast (guide API)
+  } catch (_) {}
+}
+
+function notifyError(message) {
+  showToast(message || t('failed'), 'err');
+}
+
+function setOutput(text) {
+  $('output').textContent = text && text.trim() ? text : '—';
+}
+
+function setBusy(busy) {
+  ['btnStart', 'btnStop', 'btnRestart'].forEach((id) => {
+    $(id).disabled = busy;
+  });
+  $('logLevelSel').disabled = busy;
+}
+
+function renderStatus(st) {
+  lastStatus = st;
+  const running = st.RUNNING === '1';
+  const dot = $('statusDot');
+  dot.className = 'dot ' + (running ? 'dot-on' : 'dot-off');
+  $('statusText').textContent = running ? t('statusRunning') : t('statusStopped');
+  $('vPid').textContent = running && st.PID ? st.PID : '—';
+
+  const port = st.PORT || '6532';
+  // ADDR comes from action.sh info and already accounts for the server binding
+  // to 0.0.0.0 (where only the server knows the hotspot address).
+  const host =
+    st.ADDR ||
+    (st.BIND_IP && st.BIND_IP !== '0.0.0.0' ? st.BIND_IP : '') ||
+    (st.HOTSPOT_IP || '');
+  $('vAddr').textContent = running && host ? 'http://' + host + ':' + port : '—';
+  $('vIface').textContent = st.IFACE || '—';
+  $('vLogLevel').textContent = st.LOG_LEVEL || 'info';
+  if (st.LOG_LEVEL) $('logLevelSel').value = st.LOG_LEVEL;
+}
+
+function setUnavailable() {
+  $('apiBadge').textContent = t('apiMissing');
+  $('apiBadge').className = 'badge badge-warn';
+  $('statusText').textContent = t('statusUnknown');
+  $('fallbackCmd').textContent =
+    "su -c 'sh " + MODDIR + "/action.sh info'\n" +
+    "su -c 'sh " + MODDIR + "/action.sh start'\n" +
+    "su -c 'sh " + MODDIR + "/action.sh stop'";
+  $('fallbackCard').classList.remove('hidden');
+  setBusy(true);
+}
+
+/* ─── Controller ───────────────────────────────────────────────────────── */
+let busy = false;
+let lastStatus = null;
+
+async function refreshInfo() {
+  if (!HAS_API || busy) return;
+  try {
+    const { stdout, stderr, errno } = await withTimeout(
+      sh('sh ' + quote(MODDIR + '/action.sh') + ' info'),
+      10000,
+      'info',
+    );
+    if (errno !== 0 && !stdout) {
+      notifyError(stderr || t('failed'));
+      return;
+    }
+    renderStatus(parseKv(stdout));
+  } catch (e) {
+    notifyError(e.message);
+  }
+}
+
+async function runAction(name) {
+  if (!HAS_API || busy) return;
+  busy = true;
+  setBusy(true);
+  setOutput(t('busy') + ' ' + name);
+  try {
+    const res = await withTimeout(
+      sh('sh ' + quote(MODDIR + '/action.sh') + ' ' + quote(name)),
+      30000,
+      name,
+    );
+
+    let out = (res.stdout || '') + (res.stderr ? '\n' + res.stderr : '');
+
+    // KernelSU's exec() captures stdout, but that capture can come back empty
+    // or truncated when the command backgrounds a process (the shell it runs
+    // in is torn down on return). action.sh writes the same output to
+    // logs/action.log, so read it back and prefer whichever is complete.
+    const persisted = await readText(MODDIR + '/logs/action.log');
+    if (persisted.trim() && persisted.trim().length >= out.trim().length) {
+      out = persisted;
+    }
+
+    // Also show the server's own output: it holds the bind address and any
+    // Python traceback when startup fails.
+    if (name === 'start' || name === 'restart') {
+      const serverLog = await readText(MODDIR + '/logs/server.log', 25);
+      if (serverLog.trim()) {
+        out += '\n\n--- logs/server.log (last 25 lines) ---\n' + serverLog.trim();
+      }
+    }
+
+    setOutput(out.trim() || '(no output)');
+    if (res.errno === 0) {
+      notify(name === 'start' ? t('started') : name === 'stop' ? t('stopped') : t('restarted'));
+    } else {
+      notifyError(res.stderr || (t('failed') + ' (exit ' + res.errno + ')'));
+    }
+  } catch (e) {
+    notifyError(e.message);
+  } finally {
+    busy = false;
+    setBusy(false);
+    await refreshInfo();
+  }
+}
+
+async function applyLogLevel() {
+  if (!HAS_API) return;
+  const level = $('logLevelSel').value;
+  try {
+    const { stdout, stderr, errno } = await withTimeout(
+      sh('sh ' + quote(MODDIR + '/action.sh') + ' loglevel ' + quote(level)),
+      10000,
+      'loglevel',
+    );
+    if (errno === 0) {
+      notify(t('logSaved') + ': ' + (stdout.trim() || level));
+      await refreshInfo();
+    } else {
+      notifyError(stderr || t('failed'));
+    }
+  } catch (e) {
+    notifyError(e.message);
+  }
+}
+
+async function refreshLogs() {
+  if (!HAS_API) return;
+  try {
+    const text = await readText(MODDIR + '/logs/server.log', 120);
+    $('logView').textContent = text.trim() || t('noLog');
+  } catch (e) {
+    notifyError(e.message);
+  }
+}
+
+/* ─── i18n / pages / about ─────────────────────────────────────────────── */
+function applyI18n() {
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  document.querySelectorAll('[data-i18n]').forEach((el) => {
+    el.textContent = t(el.getAttribute('data-i18n'));
+  });
+  $('langBtn').textContent = lang === 'zh' ? 'EN' : '中文';
+  $('apiBadge').textContent = HAS_API ? t('apiReady') : t('apiMissing');
+  $('apiBadge').className = 'badge ' + (HAS_API ? 'badge-ok' : 'badge-warn');
+  // Dynamic status text is not driven by data-i18n, so refresh it explicitly
+  // (otherwise switching language leaves the old wording on screen).
+  if (lastStatus) renderStatus(lastStatus);
+  else if (!HAS_API) $('statusText').textContent = t('statusUnknown');
+  renderAbout();
+}
+
+function renderAbout() {
+  const copyCmd = (cmd) =>
+    '<code class="copy-cmd" data-copy="' + cmd.replace(/"/g, '&quot;') + '">' + cmd + '</code>';
+  const base = "su -c 'sh " + MODDIR + '/action.sh ';
+  $('aboutBody').innerHTML =
+    '<p>' + t('aboutIntro') + '</p>' +
+    '<h3>' + t('aboutQuickStart') + '</h3><ol>' +
+    '<li>' + t('aboutStep1') + '</li>' +
+    '<li>' + t('aboutStep2') + '</li>' +
+    '<li>' + t('aboutStep3') + '</li>' +
+    '<li>' + t('aboutStep4') + '</li></ol>' +
+    '<h3>' + t('aboutCli') + '</h3><ul class="cmd-list">' +
+    '<li>' + copyCmd(base + "start'") + '</li>' +
+    '<li>' + copyCmd(base + "stop'") + '</li>' +
+    '<li>' + copyCmd(base + "restart'") + '</li>' +
+    '<li>' + copyCmd(base + "status'") + '</li>' +
+    '<li>' + copyCmd(base + "log 200'") + '</li>' +
+    '<li>' + copyCmd(base + "loglevel debug'") + '</li>' +
+    '</ul><p class="hint">' + t('aboutCliHint') + '</p>' +
+    '<h3>' + t('aboutLogLevels') + '</h3><ul>' +
+    '<li>' + t('aboutLevelInfo') + '</li>' +
+    '<li>' + t('aboutLevelError') + '</li>' +
+    '<li>' + t('aboutLevelDebug') + '</li>' +
+    '<li>' + t('aboutLevelOff') + '</li></ul>' +
+    '<h3>' + t('aboutSettings') + '</h3><p>' + t('aboutSettingsText') + '</p>' +
+    '<p><b>' + t('aboutLicense') + '</b></p>';
+}
+
+function showPage(name) {
+  ['control', 'logs', 'about'].forEach((p) => {
+    $('page-' + p).classList.toggle('hidden', p !== name);
+    $('tab-' + p).classList.toggle('is-active', p === name);
+  });
+  if (name === 'logs') refreshLogs();
 }
 
 function toggleLang() {
-  LANG = LANG === "en" ? "zh" : "en";
-  localStorage.setItem("fb_wui_lang", LANG);
+  lang = lang === 'en' ? 'zh' : 'en';
+  localStorage.setItem('fb_wui_lang', lang);
   applyI18n();
-  refreshStatus();
 }
 
-// ─── Root exec API ──────────────────────────────────────────────────────
-var HAS_API = false;
-var API_METHOD = null;
-
-function checkApi() {
-  if (typeof ksu !== "undefined" && typeof ksu.exec === "function") {
-    HAS_API = true;
-    API_METHOD = "ksu.exec";
-    return "ksu.exec";
-  }
-  if (typeof exec === "function") {
-    HAS_API = true;
-    API_METHOD = "exec()";
-    return "exec()";
-  }
-  HAS_API = false;
-  API_METHOD = null;
-  return null;
-}
-
-function kexec(cmd) {
+async function copyText(text, el) {
+  const done = () => {
+    if (!el) return;
+    const old = el.textContent;
+    el.textContent = t('copyOk');
+    setTimeout(() => {
+      el.textContent = old;
+    }, 1200);
+  };
   try {
-    var out = ksu.exec(cmd);
-    if (out === null || out === undefined) return "";
-    return String(out).trim();
-  } catch (e) {
-    return "ERROR calling ksu.exec(): " + e;
-  }
-}
-
-function kexec_all(cmd) {
-  var safe = cmd.replace(/'/g, "'\\''");
-  return kexec("sh -c '" + safe + " 2>&1'");
-}
-
-// ─── Touch feedback ─────────────────────────────────────────────────────
-function attachSpringTapFeedback() {
-  var selector = ["button", ".bottom-nav-item"].join(",");
-  var els = document.querySelectorAll(selector);
-  for (var i = 0; i < els.length; i++) {
-    (function(el) {
-      if (el.dataset && el.dataset.springTapInit === "true") return;
-      if (el.dataset) el.dataset.springTapInit = "true";
-      var startX = 0, startY = 0, moved = false;
-      el.addEventListener("touchstart", function(event) {
-        var touch = event.touches && event.touches[0];
-        if (!touch) return;
-        startX = touch.clientX; startY = touch.clientY; moved = false;
-      }, { passive: true });
-      el.addEventListener("touchmove", function(event) {
-        var touch = event.touches && event.touches[0];
-        if (!touch) return;
-        if (Math.abs(touch.clientX - startX) > 8 || Math.abs(touch.clientY - startY) > 8) moved = true;
-      }, { passive: true });
-      el.addEventListener("touchend", function() {
-        if (moved) return;
-        if (el.disabled || el.classList.contains("spring-tap")) return;
-        el.classList.remove("spring-tap");
-        void el.offsetWidth;
-        el.classList.add("spring-tap");
-        setTimeout(function() { el.classList.remove("spring-tap"); }, 380);
-      }, { passive: true });
-      el.addEventListener("touchcancel", function() { moved = true; }, { passive: true });
-    })(els[i]);
-  }
-}
-
-// ─── Toast system ───────────────────────────────────────────────────────
-var toastAction = null;
-var toastSecondaryAction = null;
-var toastTertiaryAction = null;
-var progressToastActive = false;
-
-function setToastActionsHidden(hidden) {
-  var actions = document.querySelector("#toast-card .toast-actions");
-  if (!actions) return;
-  if (hidden) actions.classList.add("hidden");
-  else actions.classList.remove("hidden");
-}
-
-function showProgressToast(title, text) {
-  progressToastActive = true;
-  showToastHtml(
-    title || t("checking"),
-    "<div class='progress-row'>" +
-      "<div class='spinner'></div>" +
-      "<div class='warn-text' id='progress-text'>" + esc(text || t("checking")) + "</div>" +
-    "</div>" +
-    "<div class='warn-note'>" + (LANG === "zh" ? "请勿退出页面。" : "Please do not exit the page.") + "</div>",
-    true,
-    t("checking"),
-    function() {}
-  );
-  setToastActionsHidden(true);
-}
-
-function hideProgressToastIfActive() {
-  if (!progressToastActive) return;
-  progressToastActive = false;
-  hideToast();
-}
-
-function showToastHtml(title, htmlMessage, isOk, primaryText, onPrimary, secondaryText, onSecondary, tertiaryText, onTertiary) {
-  var overlay = document.getElementById("toast-overlay");
-  var tt = document.getElementById("toast-title");
-  var m = document.getElementById("toast-message");
-  var b1 = document.getElementById("toast-ok");
-  var b2 = document.getElementById("toast-secondary");
-  var b3 = document.getElementById("toast-tertiary");
-  if (!overlay || !tt || !m || !b1 || !b2 || !b3) return;
-
-  tt.textContent = title || t("ready");
-  tt.classList.remove("ok", "bad", "pulse");
-  if (isOk) tt.classList.add("ok");
-  else tt.classList.add("bad", "pulse");
-
-  m.innerHTML = htmlMessage || "";
-
-  b1.textContent = primaryText ? primaryText : t("ready");
-  toastAction = (typeof onPrimary === "function") ? onPrimary : null;
-
-  if (secondaryText && typeof onSecondary === "function") {
-    b2.textContent = secondaryText;
-    b2.classList.remove("hidden");
-    toastSecondaryAction = onSecondary;
-  } else {
-    b2.classList.add("hidden");
-    toastSecondaryAction = null;
-  }
-
-  if (tertiaryText && typeof onTertiary === "function") {
-    b3.textContent = tertiaryText;
-    b3.classList.remove("hidden");
-    toastTertiaryAction = onTertiary;
-  } else {
-    b3.classList.add("hidden");
-    toastTertiaryAction = null;
-  }
-
-  var card = document.getElementById("toast-card");
-  if (card) {
-    card.classList.remove("bounce-in");
-    void card.offsetWidth;
-    card.classList.add("bounce-in");
-  }
-  setToastActionsHidden(false);
-  overlay.classList.remove("hidden");
-}
-
-function hideToast() {
-  var overlay = document.getElementById("toast-overlay");
-  if (!overlay) return;
-  overlay.classList.add("hidden");
-  toastAction = null;
-  toastSecondaryAction = null;
-  toastTertiaryAction = null;
-}
-
-// ─── Utils ────────────────────────────────────────────────────────────────
-function esc(s) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function setConsole(text) {
-  var el = document.getElementById("console");
-  if (el) el.textContent = text || "—";
-}
-
-function setLogConsole(text) {
-  var el = document.getElementById("logConsole");
-  if (el) el.textContent = text || t("noLog");
-}
-
-function setButtonsDisabled(disabled) {
-  var ids = ["btnStart", "btnStop", "btnRestart", "btnRefresh"];
-  for (var i = 0; i < ids.length; i++) {
-    var el = document.getElementById(ids[i]);
-    if (el) el.disabled = disabled;
-  }
-}
-
-// ─── Status refresh ───────────────────────────────────────────────────────
-// Runs action.sh status and shows its raw output in the console.
-// No automated detection — the user sees the same output as CLI.
-function refreshStatus() {
-  if (!HAS_API) {
-    setConsole(t("noExec"));
-    return;
-  }
-  var raw = kexec_all("sh " + ACTION_SH + " status");
-  setConsole(raw || "(no output)");
-}
-
-// ─── Actions ──────────────────────────────────────────────────────────────
-function doAction(action) {
-  if (!HAS_API) {
-    setConsole(t("noExec"));
-    return;
-  }
-  if (["start", "stop", "restart"].indexOf(action) === -1) return;
-
-  setButtonsDisabled(true);
-
-  if (action === "start" || action === "restart") {
-    var lvl = document.getElementById("logLevelSel").value;
-    if (["info", "error", "debug", "off"].indexOf(lvl) === -1) lvl = "info";
-    kexec_all("mkdir -p " + MODDIR + "/logs && echo " + lvl + " > " + MODDIR + "/logs/.config");
-  }
-
-  setConsole(t("actionRunning") + ": " + action + "...");
-  showProgressToast(t("actionRunning"), action + "...");
-
-  setTimeout(function() {
-    var raw = kexec_all("sh " + ACTION_SH + " " + action);
-    hideProgressToastIfActive();
-    setConsole(raw || "(no output)");
-
-    if (raw.indexOf("already running") !== -1 || raw.indexOf("Server started") !== -1) {
-      showToastHtml(
-        action === "start" ? t("serverStarted") : t("serverRestarted"),
-        "<div style='font-weight:800;margin-bottom:10px;color:#2d8a4a;'>✅ " + (action === "start" ? t("serverStarted") : t("serverRestarted")) + "</div>" +
-        "<div class='warn-text'>" + esc(raw.split("\n").slice(0, 6).join("\n")) + "</div>",
-        true,
-        t("ready"),
-        function() {}
-      );
-    } else if (raw.indexOf("Server stopped") !== -1) {
-      showToastHtml(
-        t("serverStopped"),
-        "<div style='font-weight:800;margin-bottom:10px;color:#2d8a4a;'>✅ " + t("serverStopped") + "</div>",
-        true,
-        t("ready"),
-        function() {}
-      );
-    } else if (raw.indexOf("failed") !== -1 || raw.indexOf("Error") !== -1 || raw.indexOf("not found") !== -1) {
-      showToastHtml(
-        t("failedStart"),
-        "<div class='warn-head'>❌ " + t("failedStart") + "</div>" +
-        "<div class='warn-text'>" + esc(raw.split("\n").slice(0, 8).join("\n")) + "</div>",
-        false,
-        t("ready"),
-        function() {}
-      );
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      done();
+      return;
     }
-
-    setButtonsDisabled(false);
-    refreshStatus();
-  }, 80);
+  } catch (_) {}
+  // Fallback for WebViews without the async clipboard API.
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    done();
+  } catch (_) {}
+  ta.remove();
 }
 
-// ─── Log level change ─────────────────────────────────────────────────────
-function onLogLevelChange() {
-  var lvl = document.getElementById("logLevelSel").value;
-  if (["info", "error", "debug", "off"].indexOf(lvl) === -1) lvl = "info";
-  kexec_all("mkdir -p " + MODDIR + "/logs && echo " + lvl + " > " + MODDIR + "/logs/.config");
-  setConsole(t("logSaved") + ": " + lvl);
-}
+/* ─── Boot ─────────────────────────────────────────────────────────────── */
+function bindEvents() {
+  $('btnStart').addEventListener('click', () => runAction('start'));
+  $('btnStop').addEventListener('click', () => runAction('stop'));
+  $('btnRestart').addEventListener('click', () => runAction('restart'));
+  $('btnRefreshLogs').addEventListener('click', refreshLogs);
+  $('logLevelSel').addEventListener('change', applyLogLevel);
+  $('langBtn').addEventListener('click', toggleLang);
 
-// ─── Logs page ────────────────────────────────────────────────────────────
-function refreshLogs() {
-  if (!HAS_API) {
-    setLogConsole(t("noExec"));
-    return;
-  }
-  var raw = kexec_all("cat " + MODDIR + "/logs/server.log 2>/dev/null | tail -n 80");
-  setLogConsole(raw || t("noLog"));
-}
+  ['control', 'logs', 'about'].forEach((p) => {
+    $('tab-' + p).addEventListener('click', () => showPage(p));
+  });
 
-// ─── Page navigation ──────────────────────────────────────────────────────
-function showPage(pageName) {
-  var pages = ["page-control", "page-logs", "page-about"];
-  var navs = ["nav-control", "nav-logs", "nav-about"];
-  var names = ["control", "logs", "about"];
-  for (var i = 0; i < pages.length; i++) {
-    var p = document.getElementById(pages[i]);
-    var n = document.getElementById(navs[i]);
-    if (p) p.style.display = names[i] === pageName ? "block" : "none";
-    if (n) n.classList.toggle("active", names[i] === pageName);
-  }
-  if (pageName === "logs") refreshLogs();
-}
-
-// ─── Copy CLI fallback ────────────────────────────────────────────────────
-function setupCopyButton(buttonId, textToCopy) {
-  var btn = document.getElementById(buttonId);
-  if (!btn) return;
-  btn.addEventListener("click", function() {
-    if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(textToCopy).then(
-        function() {
-          btn.textContent = t("copyOk");
-          setTimeout(function() { btn.textContent = textToCopy; }, 1500);
-        },
-        function() { prompt("Copy:", textToCopy); }
-      );
-    } else {
-      prompt("Copy:", textToCopy);
-    }
+  $('aboutBody').addEventListener('click', (e) => {
+    const el = e.target.closest('[data-copy]');
+    if (el) copyText(el.getAttribute('data-copy'), el);
   });
 }
 
-// ─── Init ─────────────────────────────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", function() {
-  attachSpringTapFeedback();
+function main() {
+  resolveModule(); // no-op when the ksu bridge is missing (guarded internally)
   applyI18n();
+  bindEvents();
 
-  var api = checkApi();
-  var diag = document.getElementById("diag");
-  if (api) {
-    diag.className = "diag diag-ok";
-    diag.textContent = "API: " + api + " (testing...)";
-    document.getElementById("cliFallback").style.display = "none";
-
-    var testOut = kexec_all("echo fb_test_ok");
-    if (testOut && testOut.indexOf("fb_test_ok") !== -1) {
-      diag.textContent = "API: " + api + " (ready)";
-      diag.className = "diag diag-ok";
-      refreshStatus();
-    } else {
-      diag.textContent = "API: " + api + " — WARNING: " + t("noRoot");
-      diag.className = "diag diag-fail";
-      setConsole(t("noRoot"));
-    }
-  } else {
-    diag.className = "diag diag-fail";
-    diag.textContent = "API: NOT AVAILABLE — install KSUWebUIStandalone or MMRL, or use CLI";
-    document.getElementById("cliFallback").style.display = "block";
-    setConsole(t("noExec"));
+  if (!HAS_API) {
+    setUnavailable();
+    return;
   }
+  refreshInfo();
+  // Light auto-refresh so the status card stays live without clobbering the
+  // user's output pane.
+  setInterval(() => {
+    if (document.visibilityState === 'visible' && !busy) refreshInfo();
+  }, 15000);
+}
 
-  if (HAS_API) {
-    var lvlOut = kexec_all("cat " + MODDIR + "/logs/.config 2>/dev/null || echo info");
-    var lvl = (lvlOut || "info").trim();
-    var sel = document.getElementById("logLevelSel");
-    if (sel) sel.value = lvl;
-  }
-
-  document.getElementById("btnStart").addEventListener("click", function() { doAction("start"); });
-  document.getElementById("btnStop").addEventListener("click", function() { doAction("stop"); });
-  document.getElementById("btnRestart").addEventListener("click", function() { doAction("restart"); });
-  document.getElementById("btnRefresh").addEventListener("click", function() { refreshStatus(); });
-  document.getElementById("logLevelSel").addEventListener("change", onLogLevelChange);
-  document.getElementById("langBtn").addEventListener("click", toggleLang);
-
-  var langBtn2 = document.getElementById("langBtn2");
-  if (langBtn2) langBtn2.addEventListener("click", toggleLang);
-
-  var btnRefreshLogs = document.getElementById("btnRefreshLogs");
-  if (btnRefreshLogs) btnRefreshLogs.addEventListener("click", function() { refreshLogs(); });
-
-  document.getElementById("nav-control").addEventListener("click", function() { showPage("control"); });
-  document.getElementById("nav-logs").addEventListener("click", function() { showPage("logs"); });
-  document.getElementById("nav-about").addEventListener("click", function() { showPage("about"); });
-
-  document.getElementById("toast-ok").addEventListener("click", function() {
-    var fn = toastAction; hideToast(); if (fn) fn();
-  });
-  document.getElementById("toast-secondary").addEventListener("click", function() {
-    var fn = toastSecondaryAction; hideToast(); if (fn) fn();
-  });
-  document.getElementById("toast-tertiary").addEventListener("click", function() {
-    var fn = toastTertiaryAction; hideToast(); if (fn) fn();
-  });
-
-  setupCopyButton("copy-start", "su -c 'sh /data/adb/modules/filebase/action.sh start'");
-  setupCopyButton("copy-stop", "su -c 'sh /data/adb/modules/filebase/action.sh stop'");
-  setupCopyButton("copy-status", "su -c 'sh /data/adb/modules/filebase/action.sh status'");
-
-  setTimeout(function() {
-    showToastHtml(t("welcomeTitle"), t("welcomeHtml"), true, t("ready"), function() {});
-  }, 400);
-});
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', main);
+} else {
+  main();
+}

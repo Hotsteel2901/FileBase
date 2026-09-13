@@ -34,7 +34,6 @@ chmod 755 "$MODPATH/server.py"   2>/dev/null
 chmod 755 "$MODPATH/launch.sh"   2>/dev/null
 chmod 755 "$MODPATH/stop.sh"     2>/dev/null
 chmod 755 "$MODPATH/action.sh"   2>/dev/null
-chmod 755 "$MODPATH/service.sh"  2>/dev/null
 
 # Create runtime directory
 mkdir -p /data/local/webserver 2>/dev/null
@@ -51,6 +50,12 @@ chmod 755 /data/local/webserver/stop.sh     2>/dev/null
 # Magisk/KSU will handle module activation automatically.
 # The webroot files are already in $MODPATH/webroot/ and will
 # be accessible after reboot or when Magisk mounts the module.
+#
+# KernelSU module guide (module-webui.md): "KernelSU 会自动设置 webroot 目录的
+# 权限和 SELinux context，如果您不知道自己在做什么，请不要自行设置该目录的权限！"
+# So FileBase deliberately does NOT chmod/chcon webroot/ here — the entry point
+# is webroot/index.html and the manager serves it over
+# https://mui.kernelsu.org/. Ship the files, don't touch their permissions.
 ui_print "  → WebUI files installed"
 
 # Check for Python availability

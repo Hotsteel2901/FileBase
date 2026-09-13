@@ -6,19 +6,24 @@
 
 echo "[*] FileBase: cleaning up..."
 
-# Stop the server
-if [ -f "/data/local/webserver/stop.sh" ]; then
+# Stop the server via the module action (removes the alias IP + iptables
+# rules recorded in the state file), then fall back to the runtime copy.
+MODDIR="${0%/*}"
+if [ -f "$MODDIR/action.sh" ]; then
+    sh "$MODDIR/action.sh" stop 2>/dev/null
+elif [ -f "/data/local/webserver/stop.sh" ]; then
     sh /data/local/webserver/stop.sh 2>/dev/null
 fi
 
 # Kill any lingering server
-for pid in $(pgrep -f "python.*server.py" 2>/dev/null); do
+for pid in $(pgrep -f "python.*server\.py" 2>/dev/null); do
     echo "[*] Killing PID $pid"
     kill "$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null
 done
 
 # Remove state files
 rm -f /data/local/webserver/.server_pid 2>/dev/null
+rm -f /data/local/webserver/.heartbeat 2>/dev/null
 rm -f /data/local/tmp/.webserver_state 2>/dev/null
 
 # Remove runtime copy

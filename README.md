@@ -12,20 +12,21 @@ A Wi-Fi hotspot file server that turns an Android phone into a full-featured web
 |----------|-------------|
 | **Browse** | Directory listing with sortable columns (name, size, date), breadcrumb navigation, live search filter |
 | **Upload** | Button upload (multiple files), drag-and-drop with progress bar, binary-safe multipart parser |
-| **Download** | Single-click download with correct MIME type, RFC 5987 UTF-8 filename encoding, header escaping |
+| **Download** | Single-click download with correct MIME type, RFC 5987 UTF-8 filename encoding, HTTP Range support (resume / video seeking) |
 | **Edit** | Full-screen monospace code editor for text files, auto-save back to server (binary files are protected from accidental edit) |
 | **Manage** | Create files/folders, rename, delete (with styled confirmation dialog) |
-| **i18n** | English / 中文 switch with localStorage persistence; unique user ID; new users default English |
+| **i18n** | English / 中文 switch with localStorage persistence; unique user ID; first visit follows the browser language (falls back to English) |
 | **Theme** | Dark / Light mode, auto-follows system `prefers-color-scheme`, manual toggle with localStorage memory |
 | **Responsive** | Desktop table layout → mobile card layout at 700px breakpoint |
 | **Security** | Path traversal protection, POST size limits (100 MB upload/write, 64 KB metadata), data-attribute event delegation (no inline onclick for file actions), CSRF origin check on POSTs |
+| **Concurrency** | Threaded request handling, so a large upload or download no longer blocks other clients |
 
 ## Distribution
 
 | File | Purpose |
 |------|---------|
 | `dist/webserver.tar.gz` | Standalone: `server.py` + `launch.sh` + `stop.sh` + READMEs |
-| `dist/filebase-v2.0.3.zip` | Magisk / KernelSU / APatch flashable module (includes WebUI panel + log management) |
+| `dist/filebase-v4.0.0.zip` | Magisk / KernelSU / APatch flashable module (includes WebUI panel + log management) |
 
 ## Requirements
 
@@ -90,13 +91,14 @@ python3 /data/local/tmp/server.py
 
 ## Magisk / KernelSU / APatch Module
 
-The module provides a **persistent system-level install** with auto‑start on boot, one‑tap control via your root manager's Action button, and an optional graphical WebUI panel.
+The module provides a **persistent system-level install** with one‑tap control via your root manager's Action button and an optional graphical WebUI panel. **The server does not start on boot** — you start and stop it explicitly (Action button, WebUI, or the CLI). This avoids the classic "hotspot is not up yet at boot, so the random-IP setup fails" problem.
 
 ### Install
 
-1. Download `dist/filebase-v2.0.3.zip`
+1. Download `dist/filebase-v4.0.0.zip`
 2. Root manager → Modules → Install from storage → select the zip
-3. No reboot required — use the **Action** button immediately
+3. **Reboot once.** KernelSU/Magisk stage new modules in `modules_update/` and merge them in on the next boot, so `action.sh` and `webroot/` only exist after a reboot — the WebUI is refused and the Action button fails until then.
+4. After rebooting, use the **Action** button or open the WebUI
 
 **Supported managers:** Magisk 28.0+, KernelSU 1.0.2+, APatch (latest)
 
@@ -105,7 +107,7 @@ The module provides a **persistent system-level install** with auto‑start on b
 | Interface | How |
 |-----------|-----|
 | **Action button** | Tap "Action" in the root manager module list → runs `action.sh` with `start`/`stop`/`restart`/`status`/`log` |
-| **WebUI panel** | Requires [KSUWebUIStandalone](https://github.com/5ec1cff/KsuWebUIStandalone) or [MMRL](https://github.com/MMRLApp/MMRL) — graphical buttons + live status + log level selector |
+| **WebUI panel** | Open it from the KernelSU Manager module page (the manager renders `webroot/` in a WebView). On Magisk / APatch use [KSUWebUIStandalone](https://github.com/5ec1cff/KsuWebUIStandalone) or [MMRL](https://github.com/MMRLApp/MMRL) |
 | **Terminal** | `su -c 'sh /data/adb/modules/filebase/action.sh start'` |
 
 ### action.sh commands
@@ -115,15 +117,54 @@ sh action.sh start          Start server (auto-detect hotspot, random IP, iptabl
 sh action.sh stop           Stop server + clean up alias IP + iptables
 sh action.sh restart        Stop then start
 sh action.sh status         Show PID, bind IP, interface, log level, connectivity
+sh action.sh info           Machine-readable KEY=VALUE status (used by the WebUI)
 sh action.sh log [N]        Show last N log lines (default 50)
+sh action.sh loglevel [LVL] Read (no arg) or set the log level
 ```
 
 ### WebUI features
 
-- **Start / Stop / Restart** buttons with timeout‑safe execution
-- **Live status**: PID, bind IP, interface, log level
-- **Log level selector**: `Info` · `Error` · `Debug` · `Off` — saved to `logs/.config`
-- **i18n**: English / 中文 toggle, remembered via localStorage
+The panel is written the way KernelSU's [module WebUI guide](https://kernelsu.org/guide/module-webui.html) describes:
+
+- **Entry point** is `webroot/index.html`; CSS/JS live next to it. Permissions and
+  SELinux context are left to KernelSU, as the guide requires.
+- **Shell access uses the official `kernelsu` library** —
+  `const { errno, stdout, stderr } = await exec(cmd)`. The library is vendored
+  verbatim as `webroot/kernelsu.js` (Apache‑2.0) so the page can `import` it
+  without a bundler. The old synchronous `ksu.exec(cmd)` string API is *not*
+  the documented interface and broke under other WebUI hosts.
+- **Module directory comes from `moduleInfo()`** instead of a hard‑coded path.
+- **Native toasts** via the library's `toast()`.
+- **Start / Stop / Restart** buttons with a timeout guard.
+- **Live status** (PID, address, interface, log level) parsed from
+  `action.sh info`, a stable `KEY=VALUE` contract — not scraped from
+  human‑readable output.
+- **Log level selector**: `Info` · `Error` · `Debug` · `Off`.
+- **i18n**: English / 中文, first visit follows the browser language.
+- **Console shows the complete output.** KernelSU runs `exec()` in a temporary
+  root shell that is destroyed when the command returns, so a command's stdout
+  can come back empty or truncated (and a naive `cmd &` server is killed with
+  it). FileBase therefore starts the server with `setsid` and has `action.sh`
+  persist its full output to `logs/action.log`; the WebUI reads that file back.
+  After a start/restart it also appends `logs/server.log`, which holds the bind
+  address and any Python traceback.
+- **The address is always discoverable.** The server writes
+  `PID/HOST/PORT/IFACE/IP` to a runtime status file, so the panel can show the
+  URL even when the server listens on `0.0.0.0` or the log level is `off`.
+
+### Where the log level is stored
+
+Following the [module config guide](https://kernelsu.org/guide/module-config.html),
+the value is persisted with KernelSU's module config system:
+
+```sh
+ksud module config set log_level debug     # KSU_MODULE is set by action.sh
+```
+
+On Magisk / APatch (no `ksud`) it falls back to `logs/.config`. `action.sh`
+reads the ksud config first, then the file, and both are written whenever the
+level changes — so the setting survives manager uninstalls on KernelSU and
+still works everywhere else.
 
 ### Log levels
 
@@ -134,7 +175,18 @@ sh action.sh log [N]        Show last N log lines (default 50)
 | `debug` | Timestamp, IP:port, method, full path |
 | `off` | No log file (stdout → /dev/null) |
 
-Logs are written to `<module>/logs/server.log`. Configured via the WebUI dropdown or by writing to `logs/.config`.
+Logs are written to `<module>/logs/server.log`. Set the level with the WebUI dropdown, `sh action.sh loglevel <level>`, or `ksud module config set log_level <level>` (see above). A new level takes effect the next time the server starts — use **Restart** in the WebUI to apply it immediately.
+
+### Build the flashable zip yourself
+
+```bash
+sh "Magisk Module/build.sh"
+```
+
+The script syncs `server.py` / `launch.sh` / `stop.sh` from the repo root into
+`Magisk Module/common/`, then writes `dist/filebase-<version>.zip` plus a fresh
+`dist/webserver.tar.gz`. The release workflow uses the same script, so a
+release can never bundle a stale copy of the server.
 
 ---
 
@@ -145,15 +197,21 @@ All endpoints prefixed with `/api`.
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/list?path=<path>` | List directory contents |
-| `GET` | `/api/download?path=<path>` | Download a file (RFC 5987 UTF-8 filename) |
+| `GET` | `/api/download?path=<path>` | Download a file (RFC 5987 filename, HTTP `Range` supported) |
 | `POST` | `/api/upload` | Upload file(s) — `multipart/form-data` |
-| `POST` | `/api/write` | Create / overwrite a file — JSON `{path, content}` |
+| `POST` | `/api/write` | Create / overwrite a file — JSON `{path, content, overwrite?}` (`overwrite:false` returns 409 if the path exists) |
 | `POST` | `/api/delete` | Delete a file or directory — JSON `{path}` |
 | `POST` | `/api/mkdir` | Create a directory — JSON `{path}` |
 | `POST` | `/api/rename` | Rename / move — JSON `{oldPath, newPath}` |
 | `POST` | `/api/login` | Admin login — JSON `{user, pass}` → `{ok, token}` |
 | `POST` | `/api/logout` | Admin logout — invalidates token |
 | `GET` | `/api/auth` | Check admin auth status → `{admin: bool}` |
+
+Downloads honour a single-range `Range: bytes=...` request (206 partial
+content, 416 when unsatisfiable) so large files can be resumed. Admin sessions
+normally authenticate with a `Bearer` header; native browser downloads may
+instead append `&token=<token>` to the URL because `<a download>` cannot send
+headers.
 
 ### Response format
 
@@ -187,26 +245,27 @@ magisk_module/                Magisk/KSU/APatch module source
 ├── module.prop               Multi-root metadata (ksu=1, sufs=1)
 ├── customize.sh              Install script
 ├── action.sh                 Control entry-point (start/stop/status/log)
-├── service.sh                Boot auto-start
 ├── uninstall.sh              Cleanup
 ├── common/                   Server files → copied to module root on install
 │   ├── server.py
 │   ├── launch.sh
 │   └── stop.sh
 ├── webroot/
-│   └── index.html            WebUI control panel
+│   ├── index.html            WebUI entry point (required by the KSU guide)
+│   ├── script.js             WebUI logic (ES module, imports kernelsu.js)
+│   ├── kernelsu.js           Official KernelSU WebUI library (vendored)
+│   └── style.css             WebUI styles
 ├── META-INF/                 Recovery flash support
-├── build.sh                  Rebuild the flashable zip
-└── filebase-v2.0.3.zip       Pre-built module
+└── build.sh                  Rebuild the flashable zip + standalone tarball
 
 dist/                         Distribution archives
 ├── webserver.tar.gz          Standalone package
-└── filebase-v2.0.3.zip       Flashable module
+└── filebase-v4.0.0.zip       Flashable module
 ```
 
 ### Frontend design
 
-- **Typography**: Bebas Neue (brand), Figtree (UI body), JetBrains Mono (code / data)
+- **Typography**: system font stack, no external webfont requests (Bebas Neue / Figtree / JetBrains Mono are used only when installed locally, so the UI works fully offline)
 - **Theme**: CSS custom properties with `[data-theme="dark"]` / `[data-theme="light"]`
 - **i18n**: Template-driven via `data-i18n` attributes, `localStorage` persistence
 - **Security**: File actions use `data-*` attributes + event delegation; no inline `onclick`
@@ -257,6 +316,17 @@ FileBase includes a hidden super admin mode for full root-level file management.
 | Module WebUI hangs on Start | Fixed — backgrounded command + 15s timeout |
 | Can't access from client | Verify client is on phone's hotspot Wi‑Fi, not mobile data |
 | `grep: Unknown option` | Fixed — uses `sed` fallback for Android busybox compatibility |
+| `error` log level shows nothing | Fixed — the 4xx/5xx filter now parses the status code correctly |
+| Admin download of `/data` files fails | Fixed — admin downloads carry the token, and large files stream instead of buffering |
+| One big download freezes the whole page | Fixed — the server is now threaded |
+| Cannot resume a large download | Fixed — HTTP Range requests are supported |
+| WebUI shows "API unavailable" | The page was opened outside a WebUI host — open it from the KernelSU Manager (or KSUWebUIStandalone / MMRL); the terminal fallback is shown on the page |
+| WebUI controls do nothing | The panel needs the `kernelsu` WebUI bridge; check that the module is enabled and rebooted after install |
+| Action button / WebUI fails right after installing | Reboot once first. New modules are staged in `modules_update/` and merged in at boot, so `action.sh` and `webroot/` do not exist until then |
+| Do I need a metamodule? | No. FileBase never modifies `/system`, so KernelSU's metamodule requirement (which only applies to modules mounting a `system/` directory) does not apply |
+| No logs / can't find the IP and port | Check `logs/action.log` (complete output of the last command) and `logs/server.log` (server's own output). The WebUI console shows both. The runtime status file also always carries the address |
+| Switching the log level seems to do nothing | A new level is applied the next time the server starts — tap **Restart** (or run `action.sh restart`). While `off`, `logs/server.log` is intentionally emptied |
+| Server dies right after starting from the panel | Fixed — it is launched with `setsid` so it survives the manager's temporary root shell |
 
 ## License
 
