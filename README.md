@@ -26,7 +26,7 @@ A Wi-Fi hotspot file server that turns an Android phone into a full-featured web
 | File | Purpose |
 |------|---------|
 | `dist/webserver.tar.gz` | Standalone: `server.py` + `launch.sh` + `stop.sh` + READMEs |
-| `dist/filebase-v4.0.0.zip` | Magisk / KernelSU / APatch flashable module (includes WebUI panel + log management) |
+| `dist/filebase-v5.0.0.zip` | Magisk / KernelSU / APatch flashable module (includes WebUI panel + log management) |
 
 ## Requirements
 
@@ -95,7 +95,7 @@ The module provides a **persistent system-level install** with one‑tap control
 
 ### Install
 
-1. Download `dist/filebase-v4.0.0.zip`
+1. Download `dist/filebase-v5.0.0.zip`
 2. Root manager → Modules → Install from storage → select the zip
 3. **Reboot once.** KernelSU/Magisk stage new modules in `modules_update/` and merge them in on the next boot, so `action.sh` and `webroot/` only exist after a reboot — the WebUI is refused and the Action button fails until then.
 4. After rebooting, use the **Action** button or open the WebUI
@@ -266,7 +266,7 @@ magisk_module/                Magisk/KSU/APatch module source
 
 dist/                         Distribution archives
 ├── webserver.tar.gz          Standalone package
-└── filebase-v4.0.0.zip       Flashable module
+└── filebase-v5.0.0.zip       Flashable module
 ```
 
 ### Frontend design

@@ -5,9 +5,18 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>FileBase</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><defs><linearGradient id='a' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%239fe0ff'/><stop offset='1' stop-color='%232f9bd4'/></linearGradient></defs><rect width='64' height='64' rx='15' fill='url(%23a)'/><rect x='5' y='5' width='54' height='26' rx='12' fill='%23fff' opacity='.3'/><path d='M10 22a5 5 0 0 1 5-5h11l4.5 4.5H49a5 5 0 0 1 5 5V47a5 5 0 0 1-5 5H15a5 5 0 0 1-5-5z' fill='%23fff' opacity='.95'/><path d='M10 30h44' stroke='%23bfe9ff' stroke-width='3'/></svg>">
 <link rel="stylesheet" href="./style.css">
+<script>
+/* Apply the saved theme before first paint (follows the system by default). */
+try {
+  var _t = localStorage.getItem('fb_wui_theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme', _t);
+} catch (e) {}
+</script>
 </head>
 <body>
+<div class="bubbles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
 
 <header class="topbar">
   <div class="brand">
@@ -21,6 +30,7 @@
   </div>
   <div class="topbar-actions">
     <span id="apiBadge" class="badge">&#8230;</span>
+    <button id="themeBtn" class="ghost" type="button" aria-label="Light / dark theme"><span id="themeIcon"></span></button>
     <button id="langBtn" class="ghost" type="button">中文</button>
   </div>
 </header>

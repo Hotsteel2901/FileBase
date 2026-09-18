@@ -21,6 +21,41 @@ const HAS_API =
   typeof window.ksu !== 'undefined' &&
   typeof window.ksu.exec === 'function';
 
+/* ─── Theme (manual toggle; follows the system until the user picks) ───── */
+const THEME_KEY = 'fb_wui_theme';
+function systemTheme() {
+  return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+function currentTheme() {
+  return (
+    localStorage.getItem(THEME_KEY) ||
+    document.documentElement.getAttribute('data-theme') ||
+    systemTheme()
+  );
+}
+const SUN_SVG =
+  '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4l1.4-1.4M18 6l1.4-1.4"/></svg>';
+const MOON_SVG =
+  '<svg viewBox="0 0 24 24"><path d="M20.2 13.6A8.6 8.6 0 0 1 10.4 3.8a8.6 8.6 0 1 0 9.8 9.8z"/></svg>';
+function applyTheme() {
+  const t = currentTheme();
+  document.documentElement.setAttribute('data-theme', t);
+  const icon = $('themeIcon');
+  if (icon) icon.innerHTML = t === 'dark' ? SUN_SVG : MOON_SVG;
+}
+function toggleTheme() {
+  const next = currentTheme() === 'dark' ? 'light' : 'dark';
+  try {
+    localStorage.setItem(THEME_KEY, next);
+  } catch (_) {}
+  applyTheme();
+}
+try {
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (!localStorage.getItem(THEME_KEY)) applyTheme();
+  });
+} catch (_) {}
+
 /* ─── i18n ─────────────────────────────────────────────────────────────── */
 const I18N = {
   en: {
@@ -444,6 +479,7 @@ function bindEvents() {
   $('btnRestart').addEventListener('click', () => runAction('restart'));
   $('btnRefreshLogs').addEventListener('click', refreshLogs);
   $('logLevelSel').addEventListener('change', applyLogLevel);
+  $('themeBtn').addEventListener('click', toggleTheme);
   $('langBtn').addEventListener('click', toggleLang);
 
   ['control', 'logs', 'about'].forEach((p) => {
@@ -458,6 +494,7 @@ function bindEvents() {
 
 function main() {
   resolveModule(); // no-op when the ksu bridge is missing (guarded internally)
+  applyTheme();
   applyI18n();
   bindEvents();
 

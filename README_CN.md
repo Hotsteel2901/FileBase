@@ -26,7 +26,7 @@
 | 文件 | 用途 |
 |------|------|
 | `dist/webserver.tar.gz` | 独立版：`server.py` + `launch.sh` + `stop.sh` + README |
-| `dist/filebase-v4.0.0.zip` | Magisk / KernelSU / APatch 卡刷模块（含 WebUI 面板 + 日志管理） |
+| `dist/filebase-v5.0.0.zip` | Magisk / KernelSU / APatch 卡刷模块（含 WebUI 面板 + 日志管理） |
 
 ## 环境要求
 
@@ -95,7 +95,7 @@ python3 /data/local/tmp/server.py
 
 ### 安装
 
-1. 下载 `dist/filebase-v4.0.0.zip`
+1. 下载 `dist/filebase-v5.0.0.zip`
 2. Root 管理器 → 模块 → 从本地安装 → 选择 zip
 3. **需要重启一次。** KernelSU/Magisk 会把新模块先放在 `modules_update/`，重启时才合并生效，所以重启前 `action.sh` 和 `webroot/` 都还不存在——此时 WebUI 会被拒绝打开，Action 按钮也会失败。
 4. 重启后再使用 **Action** 按钮或打开 WebUI
@@ -259,7 +259,7 @@ magisk_module/                 Magisk/KSU/APatch 模块源码
 
 dist/                          发布归档
 ├── webserver.tar.gz           独立版
-└── filebase-v4.0.0.zip        卡刷模块
+└── filebase-v5.0.0.zip        卡刷模块
 ```
 
 ### 前端设计
