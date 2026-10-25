@@ -64,7 +64,8 @@ const I18N = {
     statusRunning: 'Server running',
     statusStopped: 'Server stopped',
     statusUnknown: 'Status unknown',
-    kPid: 'PID', kAddress: 'Address', kIface: 'Interface', kLogLevel: 'Log level',
+    kPid: 'PID', kAddress: 'Address', kIface: 'Interface', kLogLevel: 'Log level', kPort: 'Port',
+    copy: 'Copy', open: 'Open', copied: 'Copied',
     controls: 'Controls',
     startBtn: 'Start', stopBtn: 'Stop', restartBtn: 'Restart', refreshBtn: 'Refresh',
     logLevel: 'Log level',
@@ -111,7 +112,8 @@ const I18N = {
     statusRunning: '服务器运行中',
     statusStopped: '服务器已停止',
     statusUnknown: '状态未知',
-    kPid: '进程号', kAddress: '访问地址', kIface: '网卡', kLogLevel: '日志级别',
+    kPid: '进程号', kAddress: '访问地址', kIface: '网卡', kLogLevel: '日志级别', kPort: '端口',
+    copy: '复制', open: '打开', copied: '已复制',
     controls: '控制',
     startBtn: '启动', stopBtn: '停止', restartBtn: '重启', refreshBtn: '刷新',
     logLevel: '日志级别',
@@ -261,16 +263,39 @@ function renderStatus(st) {
   $('vPid').textContent = running && st.PID ? st.PID : '—';
 
   const port = st.PORT || '6532';
+  $('vPort').textContent = port;
   // ADDR comes from action.sh info and already accounts for the server binding
   // to 0.0.0.0 (where only the server knows the hotspot address).
   const host =
     st.ADDR ||
     (st.BIND_IP && st.BIND_IP !== '0.0.0.0' ? st.BIND_IP : '') ||
     (st.HOTSPOT_IP || '');
-  $('vAddr').textContent = running && host ? 'http://' + host + ':' + port : '—';
+  const url = running && host ? 'http://' + host + ':' + port : '';
+  $('vAddr').textContent = url || '—';
+  $('vAddr').dataset.url = url;
+  $('btnCopyAddr').disabled = !url;
+  $('btnOpenAddr').disabled = !url;
   $('vIface').textContent = st.IFACE || '—';
   $('vLogLevel').textContent = st.LOG_LEVEL || 'info';
   if (st.LOG_LEVEL) $('logLevelSel').value = st.LOG_LEVEL;
+
+  // Uptime comes from the server's status file (STARTED=<epoch>).
+  const started = parseInt(st.STARTED, 10);
+  const sub = $('vUptime');
+  if (running && started > 0) {
+    sub.textContent = '· ' + formatUptime(Math.max(0, Math.floor(Date.now() / 1000) - started));
+  } else {
+    sub.textContent = '';
+  }
+}
+
+function formatUptime(sec) {
+  if (sec < 60) return sec + 's';
+  const m = Math.floor(sec / 60);
+  if (m < 60) return m + 'm ' + (sec % 60) + 's';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ' + (m % 60) + 'm';
+  return Math.floor(h / 24) + 'd ' + (h % 24) + 'h';
 }
 
 function setUnavailable() {
@@ -478,6 +503,22 @@ function bindEvents() {
   $('btnStop').addEventListener('click', () => runAction('stop'));
   $('btnRestart').addEventListener('click', () => runAction('restart'));
   $('btnRefreshLogs').addEventListener('click', refreshLogs);
+  $('btnCopyAddr').addEventListener('click', function () {
+    const url = $('vAddr').dataset.url;
+    if (url) copyText(url, this.querySelector('span'));
+  });
+  $('btnOpenAddr').addEventListener('click', function () {
+    const url = $('vAddr').dataset.url;
+    if (!url) return;
+    const win = window.open(url, '_blank', 'noopener');
+    if (!win) location.href = url;
+  });
+  $('btnCopyOutput').addEventListener('click', function () {
+    copyText($('output').textContent, this.querySelector('span'));
+  });
+  $('btnCopyLogs').addEventListener('click', function () {
+    copyText($('logView').textContent, this.querySelector('span'));
+  });
   $('logLevelSel').addEventListener('change', applyLogLevel);
   $('themeBtn').addEventListener('click', toggleTheme);
   $('langBtn').addEventListener('click', toggleLang);
@@ -508,6 +549,15 @@ function main() {
   setInterval(() => {
     if (document.visibilityState === 'visible' && !busy) refreshInfo();
   }, 15000);
+  // Follow the log automatically, but only while the user is already at the
+  // bottom of the console — never yank the viewport away from them.
+  setInterval(() => {
+    if (document.visibilityState !== 'visible' || busy) return;
+    if ($('page-logs').classList.contains('hidden')) return;
+    const box = $('logView');
+    const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 24;
+    if (atBottom) refreshLogs();
+  }, 20000);
 }
 
 if (document.readyState === 'loading') {

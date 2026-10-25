@@ -10,16 +10,25 @@
 
 | 类别 | 说明 |
 |------|------|
-| **浏览** | 目录列表 + 可排序列（名称/大小/日期）+ 面包屑导航 + 实时搜索过滤 |
-| **上传** | 按钮多选上传、拖放上传带进度条、二进制安全 multipart 解析 |
-| **下载** | 单击下载 + 正确 MIME 类型 + RFC 5987 UTF-8 文件名编码 + HTTP Range（支持断点续传 / 视频拖动） |
-| **编辑** | 全屏等宽代码编辑器，保存后直接写回服务器（二进制文件受保护，不会被误编辑） |
-| **管理** | 新建文件/文件夹、重命名、删除（带确认弹窗） |
-| **国际化** | 中文 / English 切换 + localStorage 持久化；首次访问跟随浏览器语言（无法识别时默认英文）；唯一用户标识 |
-| **主题** | 深色 / 浅色模式，自动跟随系统 `prefers-color-scheme`，手动切换可记忆 |
-| **响应式** | 桌面端表格布局 → 700px 断点切换移动端卡片布局 |
-| **安全** | 路径穿越防护、POST 大小限制（上传/写入 100 MB，元数据 64 KB）、data-* 事件委托（无内联 onclick）、POST 请求跨域防护 |
-| **并发** | 多线程处理请求，一个大文件上传/下载不再阻塞其他客户端 |
+| **浏览** | 虚拟列表在 2 万文件下依然 60 fps；可排序（名称/大小/日期）、面包屑、快捷入口与实时过滤 |
+| **预览** | 图片、视频、音频、PDF、文本都在玻璃面板中就地打开，无需下载后再看 |
+| **上传** | 批量多文件上传带实时进度、支持文件夹上传、拖放上传；单请求 100 MB，流式落盘不占内存 |
+| **下载** | 单击下载 + 正确 MIME 类型 + RFC 5987 UTF-8 文件名 + HTTP Range（断点续传 / 视频拖动） |
+| **编辑** | 玻璃面板中的代码编辑器，Ctrl/Cmd + S 保存，二进制保护 + 5 MB 上限，未保存修改有自定义确认 |
+| **管理** | 新建文件/文件夹、重命名、移动、多选批量删除、复制路径、玻璃确认弹窗 |
+| **导航** | URL 与历史记录同步（前进/后退可用）、目录缓存、键盘快捷键（`/` 搜索、`U` 上传、`N` 新建、`Ctrl+A` 全选） |
+| **国际化** | 中文 / English 切换 + localStorage 持久化；首次访问跟随浏览器语言 |
+| **主题** | Liquid Glass 深色 / 浅色主题，自动跟随 `prefers-color-scheme`，手动切换可记忆 |
+| **响应式** | 桌面网格 → 820px 以下移动端列表 + 底部面板 + 扩展 FAB |
+| **安全** | 路径穿越防护、POST 大小限制、CSRF 跨域检查、管理员 Bearer 令牌会话 |
+| **并发** | 多线程请求处理；HTML 与大体积 JSON 列表启用 gzip；UI 使用 ETag/304 |
+
+### 性能说明
+
+- 列目录只做一次 `os.scandir`，不再为了判断“是否文本”而打开每个文件。
+- 管理员模式优先直接读文件系统，只有真正遇到权限错误才回退到 `su`。
+- 上传先写入临时文件再内存映射，100 MB 上传不再需要 200 MB 内存。
+- 文件列表只渲染可见行；2 万个文件大约只有 20 个 DOM 节点。
 
 ## 发布文件
 
@@ -196,16 +205,18 @@ sh "Magisk Module/build.sh"
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
-| `GET` | `/api/list?path=<路径>` | 列出目录内容 |
-| `GET` | `/api/download?path=<路径>` | 下载文件（RFC 5987 文件名，支持 HTTP `Range`） |
+| `GET` | `/api/list?path=<路径>` | 列出目录内容（加 `compact=1` 返回位置数组，超大目录体积约减少 60%） |
+| `GET` | `/api/download?path=<路径>` | 下载文件（RFC 5987 文件名，支持 HTTP `Range`；预览用 `inline=1`） |
 | `POST` | `/api/upload` | 上传文件 — `multipart/form-data` |
 | `POST` | `/api/write` | 创建/覆盖文件 — JSON `{path, content, overwrite?}`（`overwrite:false` 时若已存在返回 409） |
-| `POST` | `/api/delete` | 删除文件或目录 — JSON `{path}` |
+| `POST` | `/api/delete` | 删除文件或目录 — JSON `{path}`，批量用 `{paths: [...]}` |
 | `POST` | `/api/mkdir` | 创建目录 — JSON `{path}` |
 | `POST` | `/api/rename` | 重命名/移动 — JSON `{oldPath, newPath}` |
 | `POST` | `/api/login` | 管理员登录 — JSON `{user, pass}` → `{ok, token}` |
 | `POST` | `/api/logout` | 管理员注销 — 作废 token |
 | `GET` | `/api/auth` | 检查管理员认证状态 → `{admin: bool}` |
+| `GET` | `/api/text?path=<路径>` | 编辑器读取文本（二进制 415，超过 5 MB 返回 413） |
+| `GET` | `/api/stats` | 当前根目录的磁盘用量 |
 
 下载支持单段 `Range: bytes=...` 请求（返回 206 部分内容，越界返回 416），
 因此大文件可以断点续传。管理员通常使用 `Bearer` 请求头认证；浏览器原生
@@ -264,8 +275,13 @@ dist/                          发布归档
 
 ### 前端设计
 
-- **字体**：使用系统字体，不请求外部网络字体（Bebas Neue / Figtree / JetBrains Mono 仅在本地已安装时生效，因此完全离线可用）
-- **主题**：CSS 自定义属性 + `[data-theme="dark"]` / `[data-theme="light"]`
+**设计语言 — Liquid Glass × Material 3 Expressive**
+
+- **玻璃质感**：多层半透明、1px 高光描边、内阴影与细微噪点；用渐变光晕代替 blur 滤镜，在手机上依然轻量
+- **M3 Expressive**：大圆角、色调色块、弹簧动效（`cubic-bezier(.22,1.2,.36,1)`）、扩展 FAB、底部面板，WebUI 使用 M3 导航栏
+- **字体**：只使用系统字体，不请求外部网络字体，完全离线可用
+- **主题**：CSS 自定义属性 + `[data-theme="dark"]` / `[data-theme="light"]`，支持的浏览器在切换时使用 View Transition
+- **动效预算**：只动画 transform/opacity，列表虚拟化，并支持 `prefers-reduced-motion` 与 `prefers-reduced-transparency`
 - **国际化**：`data-i18n` 属性模板驱动，`localStorage` 持久化
 - **安全**：文件操作使用 `data-*` 属性 + 事件委托，无内联 `onclick`
 - **上传**：原生文件输入框透明度隐藏（非 `display:none`），兼容所有浏览器

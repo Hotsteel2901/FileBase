@@ -10,16 +10,25 @@ A Wi-Fi hotspot file server that turns an Android phone into a full-featured web
 
 | Category | Capabilities |
 |----------|-------------|
-| **Browse** | Directory listing with sortable columns (name, size, date), breadcrumb navigation, live search filter |
-| **Upload** | Button upload (multiple files), drag-and-drop with progress bar, binary-safe multipart parser |
-| **Download** | Single-click download with correct MIME type, RFC 5987 UTF-8 filename encoding, HTTP Range support (resume / video seeking) |
-| **Edit** | Full-screen monospace code editor for text files, auto-save back to server (binary files are protected from accidental edit) |
-| **Manage** | Create files/folders, rename, delete (with styled confirmation dialog) |
-| **i18n** | English / 中文 switch with localStorage persistence; unique user ID; first visit follows the browser language (falls back to English) |
-| **Theme** | Dark / Light mode, auto-follows system `prefers-color-scheme`, manual toggle with localStorage memory |
-| **Responsive** | Desktop table layout → mobile card layout at 700px breakpoint |
-| **Security** | Path traversal protection, POST size limits (100 MB upload/write, 64 KB metadata), data-attribute event delegation (no inline onclick for file actions), CSRF origin check on POSTs |
-| **Concurrency** | Threaded request handling, so a large upload or download no longer blocks other clients |
+| **Browse** | Virtualised list that stays at 60 fps with 20,000+ files, sortable columns (name/size/date), breadcrumbs, quick-access chips and instant filtering |
+| **Preview** | In-place glass sheet for images, video, audio, PDF and text — no download round-trip |
+| **Upload** | Batched multi-file upload with live progress, folder upload, drag-and-drop, 100 MB per request, streamed to disk instead of buffered in RAM |
+| **Download** | Single-click download with correct MIME type, RFC 5987 UTF-8 filenames, HTTP Range support (resume / video seeking) |
+| **Edit** | Code editor in a glass sheet, Ctrl/Cmd + S, binary guard and 5 MB ceiling; unsaved-change guard with a custom dialog |
+| **Manage** | Create files/folders, rename, move, multi-select with batch delete, copy path, styled confirmations |
+| **Navigation** | URL + history sync (back/forward works), per-folder cache, keyboard shortcuts (`/` search, `U` upload, `N` new folder, `Ctrl+A` select all) |
+| **i18n** | English / 中文 switch with localStorage persistence; first visit follows the browser language |
+| **Theme** | Liquid Glass dark / light themes, follows `prefers-color-scheme`, manual toggle with localStorage memory |
+| **Responsive** | Desktop grid → mobile list with bottom sheets and an extended FAB at 820px |
+| **Security** | Path traversal protection, POST size limits, CSRF origin check, admin sessions with bearer tokens |
+| **Concurrency** | Threaded request handling; gzip for HTML and large JSON listings; ETag/304 for the UI |
+
+### Performance notes
+
+- Listings use a single `os.scandir` pass and never open files to guess "is this text?".
+- Admin mode reads the filesystem directly and only falls back to `su` on a real permission error.
+- Uploads are spooled to a temp file and memory-mapped, so a 100 MB upload does not require 200 MB of RAM.
+- The file list only renders visible rows; 20,000 files ≈ 20 DOM nodes.
 
 ## Distribution
 
@@ -202,16 +211,18 @@ All endpoints prefixed with `/api`.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/list?path=<path>` | List directory contents |
-| `GET` | `/api/download?path=<path>` | Download a file (RFC 5987 filename, HTTP `Range` supported) |
+| `GET` | `/api/list?path=<path>` | List directory contents (add `compact=1` for positional arrays — ~60% smaller for huge folders) |
+| `GET` | `/api/download?path=<path>` | Download a file (RFC 5987 filename, HTTP `Range` supported; `inline=1` for previews) |
 | `POST` | `/api/upload` | Upload file(s) — `multipart/form-data` |
 | `POST` | `/api/write` | Create / overwrite a file — JSON `{path, content, overwrite?}` (`overwrite:false` returns 409 if the path exists) |
-| `POST` | `/api/delete` | Delete a file or directory — JSON `{path}` |
+| `POST` | `/api/delete` | Delete a file or directory — JSON `{path}` or `{paths: [...]}` for a batch |
 | `POST` | `/api/mkdir` | Create a directory — JSON `{path}` |
 | `POST` | `/api/rename` | Rename / move — JSON `{oldPath, newPath}` |
 | `POST` | `/api/login` | Admin login — JSON `{user, pass}` → `{ok, token}` |
 | `POST` | `/api/logout` | Admin logout — invalidates token |
 | `GET` | `/api/auth` | Check admin auth status → `{admin: bool}` |
+| `GET` | `/api/text?path=<path>` | Read a text file for the editor (415 for binary, 413 above 5 MB) |
+| `GET` | `/api/stats` | Free/used storage for the active root |
 
 Downloads honour a single-range `Range: bytes=...` request (206 partial
 content, 416 when unsatisfiable) so large files can be resumed. Admin sessions
@@ -271,8 +282,13 @@ dist/                         Distribution archives
 
 ### Frontend design
 
-- **Typography**: system font stack, no external webfont requests (Bebas Neue / Figtree / JetBrains Mono are used only when installed locally, so the UI works fully offline)
-- **Theme**: CSS custom properties with `[data-theme="dark"]` / `[data-theme="light"]`
+**Design language — Liquid Glass × Material 3 Expressive**
+
+- **Glass surfaces**: layered translucency, 1px specular rims, inner highlights and a subtle noise layer; gradient orbs instead of blur filters keep the effect cheap on phones
+- **M3 Expressive**: large radii, tonal colour blocks, spring motion (`cubic-bezier(.22,1.2,.36,1)`), extended FAB, bottom sheets and an M3 navigation bar in the WebUI
+- **Typography**: system font stack only — no external webfont requests, fully offline
+- **Theme**: CSS custom properties with `[data-theme="dark"]` / `[data-theme="light"]`, view transitions on toggle where supported
+- **Motion budget**: transform/opacity-only animation, virtualised rows, `prefers-reduced-motion` and `prefers-reduced-transparency` support
 - **i18n**: Template-driven via `data-i18n` attributes, `localStorage` persistence
 - **Security**: File actions use `data-*` attributes + event delegation; no inline `onclick`
 - **Upload**: Visually‑hidden native file input (opacity:0) for cross‑browser compatibility

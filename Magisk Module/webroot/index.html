@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>FileBase</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><defs><linearGradient id='a' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%239fe0ff'/><stop offset='1' stop-color='%232f9bd4'/></linearGradient></defs><rect width='64' height='64' rx='15' fill='url(%23a)'/><rect x='5' y='5' width='54' height='26' rx='12' fill='%23fff' opacity='.3'/><path d='M10 22a5 5 0 0 1 5-5h11l4.5 4.5H49a5 5 0 0 1 5 5V47a5 5 0 0 1-5 5H15a5 5 0 0 1-5-5z' fill='%23fff' opacity='.95'/><path d='M10 30h44' stroke='%23bfe9ff' stroke-width='3'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><defs><linearGradient id='a' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23a9b3ff'/><stop offset='1' stop-color='%235d67e8'/></linearGradient></defs><rect width='64' height='64' rx='18' fill='url(%23a)'/><path d='M10 22a6 6 0 0 1 6-6h9l5 5h18a6 6 0 0 1 6 6v17a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6z' fill='%23fff' opacity='.96'/><path d='M10 30h44' stroke='%23dfe3ff' stroke-width='3'/></svg>">
 <link rel="stylesheet" href="./style.css">
 <script>
 /* Apply the saved theme before first paint (follows the system by default). */
@@ -16,7 +16,8 @@ try {
 </script>
 </head>
 <body>
-<div class="bubbles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+<div class="bg" aria-hidden="true"><i></i><i></i><i></i></div>
+<div class="noise" aria-hidden="true"></div>
 
 <header class="topbar">
   <div class="brand">
@@ -44,12 +45,27 @@ try {
       <div class="status-head">
         <span id="statusDot" class="dot dot-idle" aria-hidden="true"></span>
         <span id="statusText" class="status-text" data-i18n="statusChecking">Checking…</span>
+        <span class="status-sub" id="vUptime"></span>
       </div>
       <dl class="kv">
         <div class="kv-item"><dt data-i18n="kPid">PID</dt><dd id="vPid">—</dd></div>
         <div class="kv-item"><dt data-i18n="kIface">Interface</dt><dd id="vIface">—</dd></div>
         <div class="kv-item"><dt data-i18n="kLogLevel">Log level</dt><dd id="vLogLevel">—</dd></div>
-        <div class="kv-item addr"><dt data-i18n="kAddress">Address</dt><dd id="vAddr">—</dd></div>
+        <div class="kv-item"><dt data-i18n="kPort">Port</dt><dd id="vPort">—</dd></div>
+        <div class="kv-item addr">
+          <dt data-i18n="kAddress">Address</dt>
+          <div class="addr-row">
+            <dd id="vAddr">—</dd>
+            <button class="mini" id="btnCopyAddr" type="button" title="Copy">
+              <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></svg>
+              <span data-i18n="copy">Copy</span>
+            </button>
+            <button class="mini" id="btnOpenAddr" type="button" title="Open">
+              <svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>
+              <span data-i18n="open">Open</span>
+            </button>
+          </div>
+        </div>
       </dl>
     </div>
 
@@ -82,7 +98,13 @@ try {
       <p class="hint" data-i18n="logLevelHint">Saved through KernelSU's module config system; restart the server to apply.</p>
 
       <h3 data-i18n="output">Output</h3>
-      <pre id="output" class="console">—</pre>
+      <div class="console-wrap">
+        <pre id="output" class="console">—</pre>
+        <button class="mini" id="btnCopyOutput" type="button">
+          <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></svg>
+          <span data-i18n="copy">Copy</span>
+        </button>
+      </div>
     </div>
 
     <div id="fallbackCard" class="card hidden">
@@ -97,13 +119,21 @@ try {
     <div class="card">
       <div class="card-head">
         <h2 data-i18n="logsTitle">Server logs</h2>
-        <button id="btnRefreshLogs" class="btn btn-sm" type="button">
-          <svg viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 4v6h-6"/></svg>
-          <span data-i18n="refreshBtn">Refresh</span>
-        </button>
+        <div style="display:flex;gap:6px">
+          <button class="mini" id="btnCopyLogs" type="button">
+            <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></svg>
+            <span data-i18n="copy">Copy</span>
+          </button>
+          <button id="btnRefreshLogs" class="btn btn-sm" type="button">
+            <svg viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 4v6h-6"/></svg>
+            <span data-i18n="refreshBtn">Refresh</span>
+          </button>
+        </div>
       </div>
       <p class="hint" data-i18n="logsHint">Last 120 lines of logs/server.log</p>
-      <pre id="logView" class="console">—</pre>
+      <div class="console-wrap">
+        <pre id="logView" class="console">—</pre>
+      </div>
     </div>
   </section>
 
@@ -117,7 +147,7 @@ try {
 
 </main>
 
-<nav class="tabbar">
+<nav class="tabbar" aria-label="Sections">
   <button id="tab-control" class="tab is-active" type="button" data-page="control">
     <span class="tab-icon" aria-hidden="true">
       <svg viewBox="0 0 24 24"><path d="M13 2 4.5 13H11l-1 9 8.5-11H12z"/></svg>

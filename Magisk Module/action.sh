@@ -502,16 +502,19 @@ do_info() {
     srv_host=""
     srv_iface=""
     srv_port=""
+    srv_started=""
     if [ -r "$STATUS_FILE" ]; then
         srv_host=$(sed -n 's/^HOST=//p' "$STATUS_FILE" 2>/dev/null | head -n 1)
         srv_ip=$(sed -n 's/^IP=//p' "$STATUS_FILE" 2>/dev/null | head -n 1)
         srv_iface=$(sed -n 's/^IFACE=//p' "$STATUS_FILE" 2>/dev/null | head -n 1)
         srv_port=$(sed -n 's/^PORT=//p' "$STATUS_FILE" 2>/dev/null | head -n 1)
+        srv_started=$(sed -n 's/^STARTED=//p' "$STATUS_FILE" 2>/dev/null | head -n 1)
     fi
 
     echo "MODULE_ID=$MOD_ID"
     echo "MODULE_DIR=$MODPATH"
     echo "PORT=${srv_port:-${PORT:-6532}}"
+    echo "STARTED=${srv_started:-}"
     echo "LOG_LEVEL=$(get_log_level)"
 
     if pid=$(get_pid); then
