@@ -31,7 +31,10 @@ try {
   </div>
   <div class="topbar-actions">
     <span id="apiBadge" class="badge">&#8230;</span>
-    <button id="themeBtn" class="ghost" type="button" aria-label="Light / dark theme"><span id="themeIcon"></span></button>
+    <button id="btnQuickRefresh" class="ghost icon-only" type="button" aria-label="Refresh status" title="Refresh">
+      <svg viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 4v6h-6"/></svg>
+    </button>
+    <button id="themeBtn" class="ghost icon-only" type="button" aria-label="Light / dark theme"><span id="themeIcon"></span></button>
     <button id="langBtn" class="ghost" type="button">中文</button>
   </div>
 </header>
@@ -41,36 +44,72 @@ try {
   <!-- ═══ CONTROL ═══════════════════════════════════════════════════════ -->
   <section id="page-control" class="page">
 
-    <div class="card status-card">
+    <div id="statusCard" class="card status-card state-idle">
       <div class="status-head">
-        <span id="statusDot" class="dot dot-idle" aria-hidden="true"></span>
-        <span id="statusText" class="status-text" data-i18n="statusChecking">Checking…</span>
+        <span class="status-orb-wrap">
+          <span id="statusDot" class="dot dot-idle" aria-hidden="true"></span>
+        </span>
+        <div class="status-titles">
+          <span id="statusText" class="status-text" data-i18n="statusChecking">Checking…</span>
+          <span id="statusHint" class="status-hint" data-i18n="statusHintIdle">Querying module daemon…</span>
+        </div>
         <span class="status-sub" id="vUptime"></span>
       </div>
+
+      <div class="addr-banner">
+        <div class="addr-info">
+          <span class="addr-kicker" data-i18n="kAddress">Address</span>
+          <div id="vAddr" class="addr-val">—</div>
+        </div>
+        <div class="addr-actions">
+          <button class="mini" id="btnQrAddr" type="button" title="QR Code" disabled>
+            <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM17 17h3.5v3.5H17zM14 20h2"/></svg>
+            <span data-i18n="qrBtn">QR</span>
+          </button>
+          <button class="mini" id="btnCopyAddr" type="button" title="Copy" disabled>
+            <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></svg>
+            <span data-i18n="copy">Copy</span>
+          </button>
+          <button class="mini primary" id="btnOpenAddr" type="button" title="Open" disabled>
+            <svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>
+            <span data-i18n="open">Open</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Expandable Offline QR Code Panel -->
+      <div id="qrPanel" class="qr-panel hidden">
+        <div class="qr-box" id="qrSvgWrap" aria-hidden="true"></div>
+        <div class="qr-meta">
+          <b data-i18n="qrTitle">Scan on any device on the hotspot</b>
+          <p data-i18n="qrDesc">Connect your laptop, tablet or another phone to the same Wi-Fi hotspot, then scan or type the URL above.</p>
+        </div>
+      </div>
+
       <dl class="kv">
-        <div class="kv-item"><dt data-i18n="kPid">PID</dt><dd id="vPid">—</dd></div>
-        <div class="kv-item"><dt data-i18n="kIface">Interface</dt><dd id="vIface">—</dd></div>
-        <div class="kv-item"><dt data-i18n="kLogLevel">Log level</dt><dd id="vLogLevel">—</dd></div>
-        <div class="kv-item"><dt data-i18n="kPort">Port</dt><dd id="vPort">—</dd></div>
-        <div class="kv-item addr">
-          <dt data-i18n="kAddress">Address</dt>
-          <div class="addr-row">
-            <dd id="vAddr">—</dd>
-            <button class="mini" id="btnCopyAddr" type="button" title="Copy">
-              <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></svg>
-              <span data-i18n="copy">Copy</span>
-            </button>
-            <button class="mini" id="btnOpenAddr" type="button" title="Open">
-              <svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>
-              <span data-i18n="open">Open</span>
-            </button>
-          </div>
+        <div class="kv-item">
+          <dt><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M9 9h6v6H9z"/></svg><span data-i18n="kPid">PID</span></dt>
+          <dd id="vPid">—</dd>
+        </div>
+        <div class="kv-item">
+          <dt><svg viewBox="0 0 24 24"><path d="M2 8.5a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16.5a5 5 0 0 1 7 0"/><circle cx="12" cy="20" r="1"/></svg><span data-i18n="kIface">Interface</span></dt>
+          <dd id="vIface">—</dd>
+        </div>
+        <div class="kv-item">
+          <dt><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span data-i18n="kLogLevel">Log level</span></dt>
+          <dd id="vLogLevel">—</dd>
+        </div>
+        <div class="kv-item">
+          <dt><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v4l2.5 2.5"/></svg><span data-i18n="kPort">Port</span></dt>
+          <dd id="vPort">—</dd>
         </div>
       </dl>
     </div>
 
     <div class="card">
-      <h2 data-i18n="controls">Controls</h2>
+      <div class="card-head">
+        <h2 data-i18n="controls">Controls</h2>
+      </div>
       <div class="btn-row">
         <button id="btnStart" class="btn btn-primary" type="button">
           <svg viewBox="0 0 24 24"><path d="M7 5.5v13l11-6.5z"/></svg>
@@ -86,28 +125,44 @@ try {
         </button>
       </div>
 
-      <label class="field" for="logLevelSel">
+      <div class="field">
         <span data-i18n="logLevel">Log level</span>
-        <select id="logLevelSel">
+        <!-- M3 Expressive Segmented Pill Control -->
+        <div class="seg-group" id="logLevelSeg" role="radiogroup" aria-label="Log level">
+          <button type="button" class="seg-btn is-active" data-level="info">Info</button>
+          <button type="button" class="seg-btn" data-level="error">Error</button>
+          <button type="button" class="seg-btn" data-level="debug">Debug</button>
+          <button type="button" class="seg-btn" data-level="off">Off</button>
+        </div>
+        <!-- Native select kept synced for full accessibility & script compatibility -->
+        <select id="logLevelSel" class="sr-select" aria-label="Log level">
           <option value="info" data-i18n="lvlInfo">Info — requests + status</option>
           <option value="error" data-i18n="lvlError">Error — 4xx/5xx only</option>
           <option value="debug" data-i18n="lvlDebug">Debug — full details</option>
           <option value="off" data-i18n="lvlOff">Off — no logging</option>
         </select>
-      </label>
+        <p id="logLevelDesc" class="seg-desc" data-i18n="lvlInfo">Info — requests + status</p>
+      </div>
       <p class="hint" data-i18n="logLevelHint">Saved through KernelSU's module config system; restart the server to apply.</p>
 
-      <h3 data-i18n="output">Output</h3>
+      <div class="console-header">
+        <h3 data-i18n="output">Output</h3>
+        <div class="console-tools">
+          <button class="mini" id="btnClearOutput" type="button">
+            <span data-i18n="clear">Clear</span>
+          </button>
+          <button class="mini" id="btnCopyOutput" type="button">
+            <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></svg>
+            <span data-i18n="copy">Copy</span>
+          </button>
+        </div>
+      </div>
       <div class="console-wrap">
         <pre id="output" class="console">—</pre>
-        <button class="mini" id="btnCopyOutput" type="button">
-          <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></svg>
-          <span data-i18n="copy">Copy</span>
-        </button>
       </div>
     </div>
 
-    <div id="fallbackCard" class="card hidden">
+    <div id="fallbackCard" class="card fallback-card hidden">
       <h2 data-i18n="fallbackTitle">WebUI API unavailable</h2>
       <p class="hint" data-i18n="fallbackText">Open this page from the KernelSU Manager. You can still control the module from a terminal:</p>
       <pre id="fallbackCmd" class="console"></pre>
@@ -118,8 +173,14 @@ try {
   <section id="page-logs" class="page hidden">
     <div class="card">
       <div class="card-head">
-        <h2 data-i18n="logsTitle">Server logs</h2>
-        <div style="display:flex;gap:6px">
+        <div>
+          <h2 data-i18n="logsTitle">Server logs</h2>
+          <p class="hint" style="margin-top:2px" data-i18n="logsHint">Last 120 lines of logs/server.log</p>
+        </div>
+        <div class="log-head-actions">
+          <button class="mini" id="btnWrapLogs" type="button" aria-pressed="true">
+            <span data-i18n="wrapBtn">Wrap</span>
+          </button>
           <button class="mini" id="btnCopyLogs" type="button">
             <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></svg>
             <span data-i18n="copy">Copy</span>
@@ -130,9 +191,21 @@ try {
           </button>
         </div>
       </div>
-      <p class="hint" data-i18n="logsHint">Last 120 lines of logs/server.log</p>
+
+      <div class="log-toolbar">
+        <label class="log-search">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+          <input type="text" id="logSearch" data-i18n-placeholder="logFilterPlaceholder" placeholder="Filter logs…" autocomplete="off">
+        </label>
+        <div class="log-chips" id="logFilterChips">
+          <button type="button" class="chip is-active" data-filter="all" data-i18n="filterAll">All</button>
+          <button type="button" class="chip" data-filter="err" data-i18n="filterErr">4xx / 5xx</button>
+          <button type="button" class="chip" data-filter="ok" data-i18n="filterOk">2xx / 3xx</button>
+        </div>
+      </div>
+
       <div class="console-wrap">
-        <pre id="logView" class="console">—</pre>
+        <pre id="logView" class="console log-console">—</pre>
       </div>
     </div>
   </section>
@@ -149,20 +222,26 @@ try {
 
 <nav class="tabbar" aria-label="Sections">
   <button id="tab-control" class="tab is-active" type="button" data-page="control">
-    <span class="tab-icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24"><path d="M13 2 4.5 13H11l-1 9 8.5-11H12z"/></svg>
+    <span class="tab-pill">
+      <span class="tab-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M13 2 4.5 13H11l-1 9 8.5-11H12z"/></svg>
+      </span>
     </span>
     <span class="tab-label" data-i18n="navControl">Control</span>
   </button>
   <button id="tab-logs" class="tab" type="button" data-page="logs">
-    <span class="tab-icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4"/></svg>
+    <span class="tab-pill">
+      <span class="tab-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4"/></svg>
+      </span>
     </span>
     <span class="tab-label" data-i18n="navLogs">Logs</span>
   </button>
   <button id="tab-about" class="tab" type="button" data-page="about">
-    <span class="tab-icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.6v.1"/></svg>
+    <span class="tab-pill">
+      <span class="tab-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.6v.1"/></svg>
+      </span>
     </span>
     <span class="tab-label" data-i18n="navAbout">About</span>
   </button>
@@ -170,8 +249,6 @@ try {
 
 <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
-<!-- KernelSU module guide: the entry point is webroot/index.html; the logic is
-     an ES module that imports the official "kernelsu" library. -->
 <script type="module" src="./script.js"></script>
 </body>
 </html>
