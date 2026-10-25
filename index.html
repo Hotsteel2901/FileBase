@@ -102,13 +102,13 @@
 
 /* ─── Base ───────────────────────────────────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth;color-scheme:dark}
+html{scroll-behavior:smooth;color-scheme:dark;overflow-x:hidden;overflow-x:clip}
 [data-theme="light"]{color-scheme:light}
 :root{--ease-spring:cubic-bezier(.22,1.2,.36,1);--ease-out:cubic-bezier(.2,.8,.2,1);--nav-h:68px}
 body{
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-  color:var(--txt);background:var(--bg);background-image:var(--bg-grad);background-attachment:fixed;
-  line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden;
+  color:var(--txt);background:var(--bg);background-image:var(--bg-grad);
+  line-height:1.6;-webkit-font-smoothing:antialiased;
   transition:background-color .35s ease,color .35s ease;
 }
 img,svg{display:block}

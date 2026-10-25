@@ -402,8 +402,12 @@ async function applyLogLevel() {
 async function refreshLogs() {
   if (!HAS_API) return;
   try {
+    const box = $('logView');
+    const wasAtBottom = !box.textContent || box.textContent === '—' ||
+      (box.scrollTop + box.clientHeight >= box.scrollHeight - 24);
     const text = await readText(MODDIR + '/logs/server.log', 120);
-    $('logView').textContent = text.trim() || t('noLog');
+    box.textContent = text.trim() || t('noLog');
+    if (wasAtBottom) box.scrollTop = box.scrollHeight;
   } catch (e) {
     notifyError(e.message);
   }
@@ -458,6 +462,7 @@ function showPage(name) {
     $('page-' + p).classList.toggle('hidden', p !== name);
     $('tab-' + p).classList.toggle('is-active', p === name);
   });
+  window.scrollTo(0, 0);
   if (name === 'logs') refreshLogs();
 }
 

@@ -193,7 +193,7 @@ html{font-size:15px;-webkit-text-size-adjust:100%;color-scheme:dark}
 :root{--row-h:56px;--radius:28px;--ease-spring:cubic-bezier(.22,1.2,.36,1);--ease-out:cubic-bezier(.2,.8,.2,1)}
 body{
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-  color:var(--txt);background:var(--bg);background-image:var(--bg-grad);background-attachment:fixed;
+  color:var(--txt);background:var(--bg);background-image:var(--bg-grad);
   height:100vh;height:100dvh;overflow:hidden;display:flex;flex-direction:column;
   -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;
   transition:background-color .3s ease,color .3s ease;
@@ -266,6 +266,7 @@ a{color:inherit;text-decoration:none}
 .brand-text small{display:block;font-size:10.5px;font-weight:600;color:var(--txt-3);letter-spacing:.06em;text-transform:uppercase}
 
 .crumbs{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:2px;overflow-x:auto;scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;touch-action:pan-x;
   padding:4px;border-radius:16px;background:var(--g-solid-2);border:1px solid var(--stroke)}
 .crumbs::-webkit-scrollbar{display:none}
 .crumb{
@@ -358,7 +359,7 @@ a{color:inherit;text-decoration:none}
 .search.has-value .search-clear{display:grid}
 .search.has-value .kbd{display:none}
 
-.chips{display:flex;align-items:center;gap:7px;padding:0 14px 10px;overflow-x:auto;scrollbar-width:none;flex:0 0 auto}
+.chips{display:flex;align-items:center;gap:7px;padding:0 14px 10px;overflow-x:auto;scrollbar-width:none;flex:0 0 auto;-webkit-overflow-scrolling:touch;touch-action:pan-x}
 .chips::-webkit-scrollbar{display:none}
 .chips:empty{display:none}
 .chip{
@@ -393,19 +394,18 @@ a{color:inherit;text-decoration:none}
 .list-head .col-actions{text-align:right;padding-right:4px}
 
 .list-body{
-  flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
+  flex:1 1 0%;min-height:0;overflow-y:auto;overflow-x:hidden;
   overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
-  contain:strict;
+  contain:layout paint;overflow-anchor:none;touch-action:pan-y;
 }
-.list-body > .vtop,.list-body > .vbot{height:0}
-.rows{will-change:transform}
+.list-body > .vtop,.list-body > .vbot{height:0;overflow-anchor:none}
+.rows{overflow-anchor:none}
 
 .row{
   display:grid;grid-template-columns:minmax(0,1fr) 112px 158px 148px;gap:8px;align-items:center;
   height:var(--row-h);padding:0 16px;
   border-bottom:1px solid color-mix(in srgb,var(--stroke) 55%,transparent);
   font-size:13.5px;transition:background-color .14s ease;
-  content-visibility:auto;contain-intrinsic-size:auto var(--row-h);
 }
 .row:last-child{border-bottom:0}
 .row:hover{background:var(--hl)}
@@ -448,8 +448,8 @@ a{color:inherit;text-decoration:none}
 
 /* ─── Empty / skeleton ───────────────────────────────────────────────────── */
 .empty{
-  flex:1 1 auto;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;
-  padding:48px 24px;text-align:center;
+  flex:1 1 0%;min-height:0;overflow-y:auto;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+  padding:48px 24px;text-align:center;-webkit-overflow-scrolling:touch;
 }
 .empty.show{display:flex;animation:rise .35s var(--ease-out) both}
 .empty-ico{
@@ -748,6 +748,10 @@ body.selecting .row .c-acts{opacity:.35;pointer-events:none}
   .actions{gap:4px}
   .icon-btn{height:36px;min-width:36px;padding:0 8px}
   .statusbar .stat.hide-xs{display:none}
+}
+@media (max-height:520px){
+  body{height:auto;min-height:100vh;min-height:100dvh;overflow-y:auto}
+  .list-card{min-height:320px}
 }
 @media (min-width:821px){.fab{display:none!important}}
 
@@ -1491,6 +1495,7 @@ function measureRow() {
 function renderWindow(force) {
   measureRow();
   var body = $('listBody');
+  var rows = $('vRows');
   var total = view.length;
   var vh = body.clientHeight || 420;
   var top = body.scrollTop || 0;
@@ -1499,11 +1504,33 @@ function renderWindow(force) {
   var end = Math.min(total, Math.ceil((top + vh) / ROW_H) + overscan);
   if (start === end && total) end = Math.min(total, start + 1);
   if (!force && start === rangeStart && end === rangeEnd) return;
+  if (!force && rows) rows.classList.remove('enter');
+
+  var oldStart = rangeStart, oldEnd = rangeEnd;
   rangeStart = start; rangeEnd = end;
 
-  var html = '';
-  for (var i = start; i < end; i++) html += rowHtml(view[i], i);
-  $('vRows').innerHTML = html;
+  var i, html = '';
+  if (!force && oldStart >= 0 && oldEnd > oldStart && start < oldEnd && end > oldStart && rows.children.length === (oldEnd - oldStart)) {
+    while (rows.firstElementChild && +rows.firstElementChild.getAttribute('data-idx') < start) {
+      rows.removeChild(rows.firstElementChild);
+    }
+    while (rows.lastElementChild && +rows.lastElementChild.getAttribute('data-idx') >= end) {
+      rows.removeChild(rows.lastElementChild);
+    }
+    if (start < oldStart) {
+      var pre = '';
+      for (i = start; i < Math.min(oldStart, end); i++) pre += rowHtml(view[i], i, 0);
+      if (pre) rows.insertAdjacentHTML('afterbegin', pre);
+    }
+    if (end > oldEnd) {
+      var post = '';
+      for (i = Math.max(oldEnd, start); i < end; i++) post += rowHtml(view[i], i, 0);
+      if (post) rows.insertAdjacentHTML('beforeend', post);
+    }
+  } else {
+    for (i = start; i < end; i++) html += rowHtml(view[i], i, i - start);
+    rows.innerHTML = html;
+  }
   $('vTop').style.height = (start * ROW_H) + 'px';
   $('vBot').style.height = Math.max(0, (total - end) * ROW_H + (window.innerWidth <= 820 ? 78 : 0)) + 'px';
 }
@@ -1517,7 +1544,7 @@ function enterRows() {
   setTimeout(function () { rows.classList.remove('enter'); }, 620);
 }
 
-function rowHtml(e, idx) {
+function rowHtml(e, idx, relIdx) {
   var kind = e._kind;
   var isDir = e.isdir;
   var size = isDir ? '' : fmtSize(e.size);
@@ -1528,10 +1555,11 @@ function rowHtml(e, idx) {
   acts += actBtn('rename', 'rename', t('rename'));
   acts += actBtn('delete', 'delete del', t('delete'));
   var picked = selection.has(e.name);
+  var delay = (relIdx != null ? Math.max(0, Math.min(relIdx, 14)) : Math.min(idx, 14)) * 16;
   var nameCell = '<button class="name link" type="button" data-act="' +
     (isDir ? 'nav' : 'preview') + '" data-idx="' + idx + '">' + esc(e.name) + '</button>';
   return '<div class="row' + (picked ? ' picked' : '') + '" role="listitem" data-idx="' + idx +
-    '" style="--d:' + (Math.min(idx, 14) * 16) + 'ms">' +
+    '" style="--d:' + delay + 'ms">' +
     '<div class="c-name">' +
       '<button class="pick" type="button" data-act="pick" data-idx="' + idx + '" aria-label="' + esc(t('select')) + '">' +
         '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button>' +
@@ -1585,8 +1613,14 @@ function renderList(force) {
   }
   empty.classList.remove('show');
   body.style.display = '';
-  if (force) body.scrollTop = Math.min(body.scrollTop, Math.max(0, view.length * ROW_H - body.clientHeight));
   renderWindow(true);
+  if (force) {
+    var maxScroll = Math.max(0, view.length * ROW_H - body.clientHeight);
+    if (body.scrollTop > maxScroll) {
+      body.scrollTop = maxScroll;
+      renderWindow(true);
+    }
+  }
 }
 
 function showSkeleton() {
@@ -1730,6 +1764,8 @@ function go(path, opts) {
   path = normPath(path || '/');
   if (path === currentPath && !opts.force) return;
   currentPath = path;
+  $('listBody').scrollTop = 0;
+  rangeStart = -1; rangeEnd = -1;
   clearSelection();
   if (opts.push !== false) setPathUi(path);
   loadDir(path, Object.assign({ transition: true }, opts));
@@ -2537,6 +2573,8 @@ function bind() {
   window.addEventListener('popstate', function () {
     var p = new URLSearchParams(location.search).get('path') || '/';
     currentPath = normPath(p);
+    $('listBody').scrollTop = 0;
+    rangeStart = -1; rangeEnd = -1;
     loadDir(currentPath, { soft: true });
   });
 

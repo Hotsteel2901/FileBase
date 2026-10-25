@@ -86,14 +86,14 @@
 
 /* ─── Base ───────────────────────────────────────────────────────────────── */
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html{color-scheme:dark;-webkit-text-size-adjust:100%}
+html{color-scheme:dark;-webkit-text-size-adjust:100%;overflow-x:hidden;overflow-x:clip}
 [data-theme="light"]{color-scheme:light}
 body{
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
-  color:var(--txt);background:var(--bg);background-image:var(--bg-grad);background-attachment:fixed;
+  color:var(--txt);background:var(--bg);background-image:var(--bg-grad);
   min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;
   padding-bottom:calc(92px + env(safe-area-inset-bottom));
-  -webkit-font-smoothing:antialiased;overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;-webkit-overflow-scrolling:touch;touch-action:pan-y;
   transition:background-color .3s ease,color .3s ease;
 }
 button,select,input{font:inherit;color:inherit}
@@ -310,6 +310,7 @@ select:disabled{opacity:.55;cursor:default}
   box-shadow:inset 0 2px 14px rgba(0,0,0,.55),0 1px 0 var(--hi);
   white-space:pre-wrap;word-break:break-word;
   min-height:78px;max-height:360px;overflow:auto;
+  -webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;
 }
 .console::selection{background:rgba(150,162,255,.35)}
 .console-wrap .mini{position:absolute;top:9px;right:9px;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.14);color:var(--well-text);z-index:2}
